@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>VideoAI compositor harness</title>
+    <style>
+      body { margin: 0; padding: 24px; background: #0a0b0d; color: #e8eaef;
+             font: 13px/1.5 system-ui, sans-serif; }
+      h1 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+      p { color: #99a0ad; margin: 0 0 20px; }
+      #frames { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+      figure { margin: 0; }
+      canvas { width: 100%; border: 1px solid #262a33; border-radius: 8px; display: block; }
+      figcaption { margin-top: 6px; color: #6b7280; font-family: ui-monospace, monospace; font-size: 11px; }
+    </style>
+  </head>
+  <body>
+    <h1>Compositor harness</h1>
+    <p>The same composeFrame() the preview and the exporter use, drawn against synthetic frames.</p>
+    <div id="frames"></div>
+    <script type="module" src="./harness.js"></script>
+  </body>
+</html>
