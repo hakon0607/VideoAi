@@ -392,6 +392,69 @@ export interface Database {
         };
         Relationships: [];
       };
+      library_assets: {
+        Row: {
+          id: string;
+          kind: string;
+          name: string;
+          tags: string[];
+          category: string;
+          storage_path: string;
+          mime_type: string;
+          size_bytes: number;
+          duration_seconds: number;
+          width: number | null;
+          height: number | null;
+          has_audio: boolean;
+          thumbnail_url: string | null;
+          license: string;
+          attribution: string | null;
+          source_url: string | null;
+          added_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          kind: string;
+          name: string;
+          tags?: string[];
+          category?: string;
+          storage_path: string;
+          mime_type?: string;
+          size_bytes?: number;
+          duration_seconds?: number;
+          width?: number | null;
+          height?: number | null;
+          has_audio?: boolean;
+          thumbnail_url?: string | null;
+          license?: string;
+          attribution?: string | null;
+          source_url?: string | null;
+          added_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          kind?: string;
+          name?: string;
+          tags?: string[];
+          category?: string;
+          storage_path?: string;
+          mime_type?: string;
+          size_bytes?: number;
+          duration_seconds?: number;
+          width?: number | null;
+          height?: number | null;
+          has_audio?: boolean;
+          thumbnail_url?: string | null;
+          license?: string;
+          attribution?: string | null;
+          source_url?: string | null;
+          added_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       markers: {
         Row: {
           id: string;
@@ -823,6 +886,23 @@ export interface Database {
       };
     };
     Views: {
+      admin_library: {
+        Row: {
+          id: string | null;
+          kind: string | null;
+          name: string | null;
+          category: string | null;
+          tags: string[] | null;
+          license: string | null;
+          attribution: string | null;
+          source_url: string | null;
+          size_bytes: number | null;
+          duration_seconds: number | null;
+          created_at: string | null;
+          added_by_email: string | null;
+        };
+        Relationships: [];
+      };
       admin_credit_activity: {
         Row: {
           id: string | null;

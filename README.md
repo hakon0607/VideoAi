@@ -9,6 +9,10 @@ Built with Next.js (App Router), TypeScript, Tailwind, Supabase (Auth, Postgres,
 ## What it actually does
 
 - **A public front page** at `/` describing the product, in both languages, with the editor behind sign-in.
+- **Media stays on your machine** — uploads are written to the browser's own persistent storage, not to a bucket. No upload wait, no size limit beyond your disk, no storage bill. A project opened elsewhere keeps its whole timeline and asks you to point at the files.
+- **A free assistant** — Gemini's free tier by default, or Groq, OpenRouter, OpenAI or a model on your own machine. One base URL and one key; the editor command layer is identical either way.
+- **Music and sound, generated** — sixteen sound effects and ten music beds synthesised in the browser. Free to use commercially, identical on every machine, and they take up no storage anywhere because the name *is* the recipe.
+- **A shared library** — one shelf of files every account can pull from, curated from the admin panel, with licence and credit tracked per file. One copy serves everyone.
 - **Multitrack timeline** — video, audio, text and overlay tracks; drag, trim, split, ripple delete, close gaps, detach audio, freeze, reverse, snap (toggleable), markers, per-kind track naming, reorder and rename in place, zoom from frame level out to a two-hour project, and a minimap.
 - **A CapCut-shaped library** — a vertical icon rail with Media, Text, Sounds, Stickers, Audio, Effects and Transitions, and an inspector that shares the right column with the assistant.
 - **Media folders** — bins you create, rename and drag files into, plus search across the whole library and a grid or list view.
@@ -50,46 +54,97 @@ Open http://localhost:3000.
 Create a project at [supabase.com](https://supabase.com), then:
 
 1. **Run the schema.** In the SQL editor, paste and run `supabase/setup_all_in_one.sql`. That is every migration in `supabase/migrations/` concatenated in order, and it is safe to re-run. (If you add a migration, `npm run build:sql` rebuilds that file.)
-2. **Check the buckets.** The migration creates `media` (private), `exports` (private) and `avatars` (public). Confirm them under Storage.
+2. **Check the buckets.** The migrations create `media` (private), `exports` (private), `avatars` (public) and `library` (public). Confirm them under Storage.
 3. **Set the auth URLs.** Authentication → URL Configuration:
    - Site URL: your deployed URL (e.g. `https://videoai.vercel.app`), or `http://localhost:3000` locally.
    - Redirect URLs: add `http://localhost:3000/auth/callback` and `https://<your-domain>/auth/callback`.
 4. **Copy the keys.** Settings → API gives you the project URL, the anon key and the service role key.
 
-To run the migrations one at a time instead, apply `supabase/migrations/0001_schema.sql` through `0005_storage.sql` in order.
+To run the migrations one at a time instead, apply the files in
+`supabase/migrations/` in numerical order.
 
-### 2. OpenAI
+### 2. The assistant — free
 
-Create an API key at [platform.openai.com](https://platform.openai.com). The key is only ever read server-side, inside API routes. The app walks a fallback chain of chat models, so it keeps working when a model name is retired; pin one with `OPENAI_MODEL` if you want.
+VideoAI talks to any provider that speaks the OpenAI chat-completions API with
+tool calling, so the choice is a base URL, a key and a model name. The default
+is **Google Gemini's free tier**: no card, a real daily allowance, and function
+calling on the OpenAI-compatible endpoint.
 
-### 3. Environment variables
+1. Get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+2. Put it in `AI_API_KEY` (or `GEMINI_API_KEY` — setting that alone is enough,
+   the provider is then chosen for you).
+
+Other options, all through the same two variables:
+
+| `AI_PROVIDER` | Cost | Notes |
+| --- | --- | --- |
+| `gemini` | free tier | The default. Best quality per free request. |
+| `groq` | free tier | Very fast. Llama and Qwen models. No card. |
+| `openrouter` | free models available | One key, many models. |
+| `openai` | paid | What this project used to require. |
+| `ollama` | free | A model running on your own machine. No key. |
+
+The app walks a list of current model names and remembers the first that
+answers, so it keeps working when a model is retired. Pin one with `AI_MODEL`.
+
+### 3. Transcription — also free
+
+Captions, "remove the pauses" and "cut where I say ehm" need word-level
+timestamps. Whisper on **Groq's free tier** does that, free and fast:
+
+1. Get a key at [console.groq.com/keys](https://console.groq.com/keys).
+2. Put it in `GROQ_API_KEY`.
+
+Set `TRANSCRIBE_PROVIDER=none` to turn transcription off entirely — everything
+else in the editor still works, and the assistant will say plainly that it
+cannot know what was said.
+
+### 4. Where your media lives
+
+**By default, nothing is uploaded.** Video is the only genuinely large thing in
+this app, and hosted storage is priced for it — a handful of clips fills a free
+plan. The browser already has the file the moment you drop it in, and the
+preview, the waveform, the silence detection and the export all read it from
+there, so the upload was only ever buying the ability to open the project on a
+different machine.
+
+So the bytes stay on your machine, in the browser's own private storage, and
+the database keeps the few hundred bytes that describe the file. What this means
+in practice:
+
+- No upload wait, no size limit beyond your disk, no storage bill.
+- The app asks the browser for *persistent* storage, so the files are not
+  treated as a disposable cache. You can check and re-request this under
+  Settings.
+- Open the project on another machine and the timeline is all there, but the
+  media is not. The editor says so and offers **Locate the files** — pick the
+  same footage from wherever it now is and everything plays again. Nothing on
+  the timeline is lost, because the asset id never changed.
+
+Set `NEXT_PUBLIC_MEDIA_STORAGE=supabase` to put uploads in the bucket instead,
+which is what you want if the same account edits from several machines. In that
+mode Supabase enforces a per-project upload limit — 50 MB on the free plan —
+which you raise under **Storage → Settings → Upload file size limit**.
+
+### 5. Environment variables
 
 | Variable | Where | What it is |
 | --- | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | client + server | Your Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | client + server | Public anon key. Safe to expose; RLS is the real boundary |
 | `SUPABASE_SERVICE_ROLE_KEY` | **server only** | Bypasses RLS. Never prefix with `NEXT_PUBLIC_` |
-| `OPENAI_API_KEY` | **server only** | Used by `/api/ai/*` and `/api/media/transcribe` |
-| `OPENAI_MODEL` | server, optional | Pin a chat model instead of using the fallback chain |
-| `OPENAI_TRANSCRIBE_MODEL` | server, optional | Pin a transcription model |
+| `NEXT_PUBLIC_MEDIA_STORAGE` | client | `local` (default) or `supabase` |
+| `AI_PROVIDER` | server | `gemini` (default), `groq`, `openrouter`, `openai`, `ollama` |
+| `AI_API_KEY` | **server only** | The key for that provider |
+| `AI_MODEL` / `AI_BASE_URL` | server, optional | Pin a model, or point at something else OpenAI-compatible |
+| `TRANSCRIBE_PROVIDER` | server | `groq` (default), `openai`, `none` |
+| `GROQ_API_KEY` / `TRANSCRIBE_API_KEY` | **server only** | Key for transcription |
 | `NEXT_PUBLIC_SITE_URL` | client | Base URL used for auth redirects |
 | `RENDER_WORKER_URL` / `RENDER_WORKER_TOKEN` | server, optional | Reserved for a future server-side renderer |
 
 `.env.example` lists them all. `.env.local` is gitignored — do not commit secrets.
 
-### 4. Raise the upload limit
-
-Supabase enforces a maximum upload size per project, and on the free plan it
-defaults to **50 MB** — which is almost always the reason a video upload fails.
-Raise it in the dashboard under **Storage → Settings → Upload file size limit**.
-The buckets inherit the project limit, so nothing else needs changing.
-
-VideoAI reads that limit and refuses a too-large file up front with the exact
-numbers, rather than uploading for ten minutes and failing. Files over 6 MB go
-up with the resumable protocol, so a dropped connection costs one 6 MB chunk
-instead of the whole upload.
-
-### 5. Make yourself an admin
+### 6. Make yourself an admin
 
 After signing up once:
 
@@ -115,6 +170,7 @@ security boundary.
 | Users | Every account with its email, credits, project count, storage and AI usage. Click a row to set a balance, grant unlimited credits, change the refill, or promote to admin |
 | Projects | Every project with its owner's email, length, clip count, size and AI edits. Delete a project and its files from here |
 | Media | Every uploaded file with its owner, project, size and analysis status |
+| Library | The shared shelf: add music, sound effects, backgrounds and stock clips that every user can pull from without uploading. Licence and credit are recorded per file |
 | Credits | The price list, editable in place, and the full credit ledger |
 | Storage | Scans the buckets for files no database row points at, and removes them |
 
@@ -185,6 +241,13 @@ A failed AI request is refunded automatically, and a request that turns out to b
 ---
 
 ## Deleting things
+
+With media stored locally, deleting a project removes its rows on the server;
+the files themselves are on whichever machine uploaded them, and no server can
+reach in there. The browser sweeps its own storage against what the account
+still owns each time you open the dashboard, so the disk is given back without
+you doing anything.
+
 
 Deleting a project removes its rows **and** the files behind it: the app asks
 the database which storage objects only that project references, deletes the

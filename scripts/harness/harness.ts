@@ -201,8 +201,11 @@ window.stressCompose = () => {
 
   const base = buildState();
 
+  // A quarter-second step: enough to cross every transition and animation
+  // window several times, without spending minutes on the expensive end of the
+  // blur and glow ranges, which are genuinely slow at 1280x720 by nature.
   const draw = (state: EditorState, label: string) => {
-    for (let t = 0; t <= 10; t += 0.1) {
+    for (let t = 0; t <= 10; t += 0.25) {
       try {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         composeFrame(ctx, state, t, provider);
@@ -279,4 +282,108 @@ window.stressCompose = () => {
   draw({ ...base, clips: [] }, 'empty timeline');
 
   return { frames, errors };
+};
+
+/* -------------------------------------------------------------------------- */
+/* Local media store                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Exercises the storage the whole product now depends on.
+ *
+ * With uploads kept on the user's own machine, a bug here does not mean a
+ * failed request — it means footage that cannot be found. So: write, read back
+ * byte for byte, list, delete, sweep, and check the browser actually gave us
+ * somewhere durable to put it.
+ */
+declare global {
+  interface Window {
+    stressLocalMedia: () => Promise<{ ok: boolean; steps: string[]; failures: string[] }>;
+    renderMusicBed: (id: string) => Promise<string>;
+  }
+}
+
+/** Renders one bed to base64, so the verification script can listen to it. */
+window.renderMusicBed = async (id: string) => {
+  const { renderMusic } = await import('../../lib/media/music');
+  const blob = await renderMusic(id);
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(binary);
+};
+
+window.stressLocalMedia = async () => {
+  const { putLocalFile, getLocalFile, hasLocalFile, deleteLocalFile, listLocalFiles, sweepOrphans, localStorageUsage, requestPersistence } =
+    await import('../../lib/media/local-store');
+  const { renderMusic, MUSIC_LIBRARY } = await import('../../lib/media/music');
+  const { renderSfx, SFX_LIBRARY } = await import('../../lib/media/sfx');
+
+  const steps: string[] = [];
+  const failures: string[] = [];
+  const check = (condition: boolean, label: string) => {
+    steps.push(`${condition ? 'ok  ' : 'FAIL'} ${label}`);
+    if (!condition) failures.push(label);
+  };
+
+  const persistent = await requestPersistence();
+  steps.push(`note persistent storage: ${persistent}`);
+
+  // A file of a few megabytes, so this is not just a toy blob.
+  const bytes = new Uint8Array(3 * 1024 * 1024);
+  for (let i = 0; i < bytes.length; i += 1) bytes[i] = (i * 31 + 7) % 256;
+  const original = new Blob([bytes], { type: 'video/mp4' });
+
+  await putLocalFile('harness-a', original);
+  check(await hasLocalFile('harness-a'), 'a written file is reported present');
+
+  const readBack = await getLocalFile('harness-a');
+  check(readBack !== null, 'a written file reads back');
+  if (readBack) {
+    const returned = new Uint8Array(await readBack.arrayBuffer());
+    check(returned.length === bytes.length, 'the file is the same length');
+    let identical = true;
+    for (let i = 0; i < bytes.length; i += 4099) {
+      if (returned[i] !== bytes[i]) {
+        identical = false;
+        break;
+      }
+    }
+    check(identical, 'the bytes come back unchanged');
+  }
+
+  await putLocalFile('harness-b', new Blob([new Uint8Array(1024)]));
+  const listed = await listLocalFiles();
+  check(listed.includes('harness-a') && listed.includes('harness-b'), 'both files are listed');
+
+  await deleteLocalFile('harness-b');
+  check(!(await hasLocalFile('harness-b')), 'a deleted file is gone');
+  check((await getLocalFile('harness-b')) === null, 'a missing file reads as null, not an error');
+
+  const removed = await sweepOrphans(['harness-a']);
+  steps.push(`note sweep removed ${removed}`);
+  check(await hasLocalFile('harness-a'), 'the sweep keeps what the server still knows about');
+
+  const usage = await localStorageUsage();
+  check(usage.quota > 0, 'the browser reports a storage quota');
+  steps.push(`note usage ${Math.round(usage.used / 1024 / 1024)} MB of ${Math.round(usage.quota / 1024 / 1024)} MB`);
+
+  await deleteLocalFile('harness-a');
+
+  // Every generated sound has to render, because nothing is stored for them.
+  for (const sfx of SFX_LIBRARY) {
+    const blob = await renderSfx(sfx.id);
+    check(blob.size > 1000, `sfx ${sfx.id} renders`);
+  }
+  for (const bed of MUSIC_LIBRARY) {
+    const blob = await renderMusic(bed.id);
+    check(blob.size > 100000, `music ${bed.id} renders`);
+  }
+
+  // Deterministic: the same id twice is the same audio.
+  const first = await renderMusic('lofi_chill');
+  const second = await renderMusic('lofi_chill');
+  check(first.size === second.size, 'the same bed renders identically');
+
+  return { ok: failures.length === 0, steps, failures };
 };
