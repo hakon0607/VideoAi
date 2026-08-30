@@ -15,19 +15,21 @@ import {
 import { useI18n } from '@/lib/i18n/context';
 import { formatBytes, formatClock, relativeTime } from '@/lib/utils/format';
 import { Button } from '@/components/ui/button';
+import { LibraryTab } from './library-tab';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils/cn';
 import { StatGrid } from './stat-grid';
 import { DataTable, type Column } from './data-table';
 import { UserEditor } from './user-editor';
 
-type Tab = 'overview' | 'users' | 'projects' | 'media' | 'credits' | 'storage';
+type Tab = 'overview' | 'users' | 'projects' | 'media' | 'library' | 'credits' | 'storage';
 
 const TABS: { id: Tab; key: Parameters<ReturnType<typeof useI18n>['t']>[0] }[] = [
   { id: 'overview', key: 'admin.tab.overview' },
   { id: 'users', key: 'admin.tab.users' },
   { id: 'projects', key: 'admin.tab.projects' },
   { id: 'media', key: 'admin.tab.media' },
+  { id: 'library', key: 'admin.tab.library' },
   { id: 'credits', key: 'admin.tab.credits' },
   { id: 'storage', key: 'admin.tab.storage' },
 ];
@@ -368,6 +370,7 @@ export function AdminView({ data }: { data: AdminData }) {
         </div>
       )}
 
+      {tab === 'library' && <LibraryTab />}
       {tab === 'storage' && <StorageTab hasServiceRole={data.hasServiceRole} />}
 
       {/* Keyed so the form is rebuilt from the row you clicked, rather than

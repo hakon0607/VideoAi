@@ -1,6 +1,7 @@
 'use client';
 
 import { useT } from '@/lib/i18n/context';
+import { LocalMediaSweeper } from './local-media-sweeper';
 import { NewProjectButton } from './new-project-button';
 import { ProjectGrid } from './project-grid';
 import type { ProjectSummary } from './project-card';
@@ -18,6 +19,7 @@ export function DashboardView({ name, projects }: { name: string; projects: Proj
 
   return (
     <div className="mx-auto max-w-7xl space-y-9">
+      <LocalMediaSweeper />
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-[24px] font-semibold tracking-tight text-ink">

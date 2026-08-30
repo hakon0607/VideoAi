@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { AudioLines, Film, Layers, Music, Smile, Sparkles, Type } from 'lucide-react';
+import { AudioLines, Disc3, Film, Layers, LibraryBig, Music, Smile, Sparkles, Type } from 'lucide-react';
 import { useI18n } from '@/lib/i18n/context';
 import { cn } from '@/lib/utils/cn';
 import { MediaPanel } from './media-panel';
@@ -11,13 +11,26 @@ import { EffectsPanel } from './effects-panel';
 import { TransitionsPanel } from './transitions-panel';
 import { SoundsPanel } from './sounds-panel';
 import { StickersPanel } from './stickers-panel';
+import { MusicPanel } from './music-panel';
+import { LibraryPanel } from './library-panel';
 
-type TabId = 'media' | 'text' | 'sounds' | 'stickers' | 'audio' | 'effects' | 'transitions';
+type TabId =
+  | 'media'
+  | 'library'
+  | 'text'
+  | 'sounds'
+  | 'music'
+  | 'stickers'
+  | 'audio'
+  | 'effects'
+  | 'transitions';
 
 const TABS: { id: TabId; icon: typeof Film; labelKey: Parameters<ReturnType<typeof useI18n>['t']>[0] }[] = [
   { id: 'media', icon: Film, labelKey: 'editor.media' },
+  { id: 'library', icon: LibraryBig, labelKey: 'editor.library' },
   { id: 'text', icon: Type, labelKey: 'editor.text' },
   { id: 'sounds', icon: Music, labelKey: 'editor.sounds' },
+  { id: 'music', icon: Disc3, labelKey: 'editor.music' },
   { id: 'stickers', icon: Smile, labelKey: 'editor.stickersShort' },
   { id: 'audio', icon: AudioLines, labelKey: 'editor.audio' },
   { id: 'effects', icon: Sparkles, labelKey: 'editor.effects' },
@@ -57,8 +70,10 @@ export function LeftPanel({ userId }: { userId: string }) {
 
       <div className="flex w-[292px] min-w-0 flex-col">
         {tab === 'media' && <MediaPanel userId={userId} />}
+        {tab === 'library' && <LibraryPanel userId={userId} />}
         {tab === 'text' && <TextPanel />}
         {tab === 'sounds' && <SoundsPanel />}
+        {tab === 'music' && <MusicPanel />}
         {tab === 'stickers' && <StickersPanel />}
         {tab === 'audio' && <AudioPanel />}
         {tab === 'effects' && <EffectsPanel />}

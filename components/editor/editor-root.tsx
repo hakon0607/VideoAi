@@ -8,6 +8,7 @@ import { useAutosave } from '@/lib/hooks/use-autosave';
 import { useShortcuts } from '@/lib/hooks/use-shortcuts';
 import { useMediaUrlRefresh } from '@/lib/hooks/use-media-urls-refresh';
 import { useSoundEffects } from '@/lib/hooks/use-sound-effects';
+import { useLocalMedia } from '@/lib/hooks/use-local-media';
 import { clipEnd } from '@/lib/editor/time';
 import { Topbar } from './topbar';
 import { LeftPanel } from './panels/left-panel';
@@ -41,6 +42,7 @@ export function EditorRoot({
   const capture = useCallback(async () => captureRef.current?.() ?? null, []);
   const { saveNow } = useAutosave(capture, user.id);
   useMediaUrlRefresh();
+  useLocalMedia();
   useSoundEffects(bootstrap.state.projectId, user.id);
 
   /* ------------------------------------------------------------------ */

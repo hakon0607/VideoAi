@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 import {
   Captions,
+  CloudOff,
   ChevronRight,
   Film,
   Folder,
@@ -26,6 +27,9 @@ import { uploadMediaFile, type UploadProgress } from '@/lib/media/upload';
 import { getAssetFile, rememberFile } from '@/lib/media/file-cache';
 import { InsufficientCreditsError, transcribeAsset } from '@/lib/media/transcribe';
 import { deleteAssetAction } from '@/lib/actions/projects';
+import { useRelinkMedia } from '@/lib/hooks/use-local-media';
+import { deleteLocalFile } from '@/lib/media/local-store';
+import { LOCAL_PREFIX, originOf, releaseObjectUrl } from '@/lib/media/media-source';
 import { isMediaDrag, readMediaDrag, writeMediaDrag } from '@/components/editor/timeline/drag-payload';
 import { UploadTooLargeError } from '@/lib/media/resumable';
 import { Button } from '@/components/ui/button';
@@ -83,6 +87,9 @@ export function MediaPanel({ userId }: { userId: string }) {
   const patchAsset = useEditorStore((s) => s.patchAsset);
   const addUrl = useMediaUrls((s) => s.add);
   const urls = useMediaUrls((s) => s.urls);
+  const missingIds = useMediaUrls((s) => s.missing);
+  const { missing, relink, busy: relinking } = useRelinkMedia();
+  const relinkInputRef = useRef<HTMLInputElement>(null);
 
   const handleFiles = useCallback(
     async (files: FileList | File[]) => {
@@ -222,8 +229,13 @@ export function MediaPanel({ userId }: { userId: string }) {
       dispatch([{ type: 'remove_asset', params: { assetId: asset.id } }], {
         label: `Remove ${asset.name}`,
       });
-      // The server action also removes the file from storage, but only when no
-      // other project still points at it.
+      // A local file lives on this machine only, so it is removed here; the
+      // server action still drops the row, and the bucket object when the file
+      // was a cloud upload no other project points at.
+      if (asset.storagePath.startsWith(LOCAL_PREFIX)) {
+        await deleteLocalFile(asset.storagePath.slice(LOCAL_PREFIX.length));
+      }
+      releaseObjectUrl(asset.id);
       const result = await deleteAssetAction(asset.id);
       if (!result.ok && result.error) setError(result.error);
     },
@@ -269,6 +281,41 @@ export function MediaPanel({ userId }: { userId: string }) {
         <p className="mx-3 mt-2 rounded-sm border border-danger/30 bg-danger/10 px-2.5 py-1.5 text-[11.5px] text-danger">
           {error}
         </p>
+      )}
+
+      {missing.length > 0 && (
+        <div className="mx-3 mt-2 rounded-md border border-warning/30 bg-warning/10 px-2.5 py-2">
+          <p className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-warning">
+            <CloudOff size={12} className="mt-0.5 shrink-0" />
+            {t('editor.mediaOffline', { count: missing.length })}
+          </p>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="mt-1.5 w-full"
+            disabled={relinking}
+            onClick={() => relinkInputRef.current?.click()}
+          >
+            {relinking ? <Loader2 size={11} className="animate-spin-slow" /> : null}
+            {t('editor.relink')}
+          </Button>
+          <input
+            ref={relinkInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={async (event) => {
+              if (!event.target.files?.length) return;
+              const result = await relink(event.target.files);
+              event.target.value = '';
+              if (result.unmatched.length) {
+                setError(t('editor.relinkUnmatched', { names: result.unmatched.join(', ') }));
+              } else {
+                setError(null);
+              }
+            }}
+          />
+        </div>
       )}
 
       <div className="mt-2 flex shrink-0 items-center gap-1 px-3">
@@ -481,6 +528,16 @@ export function MediaPanel({ userId }: { userId: string }) {
                       {asset.width ? ` · ${asset.width}×${asset.height}` : ''}
                     </p>
                     <div className="mt-1 flex flex-wrap gap-1">
+                      {missingIds.includes(asset.id) && (
+                        <span className="rounded-xs bg-warning/15 px-1.5 py-px text-[9.5px] text-warning">
+                          {t('editor.offline')}
+                        </span>
+                      )}
+                      {originOf(asset.storagePath) === 'generated' && (
+                        <span className="rounded-xs bg-accent-soft px-1.5 py-px text-[9.5px] text-accent">
+                          {t('editor.generated')}
+                        </span>
+                      )}
                       {hasTranscript && (
                         <span className="rounded-xs bg-positive/15 px-1.5 py-px text-[9.5px] text-positive">
                           {t('editor.analyzed')}

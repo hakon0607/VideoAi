@@ -3,7 +3,7 @@ import OpenAI from 'openai';
 import { createServerSupabase } from '@/lib/supabase/server';
 import {
   describeOpenAIError,
-  getOpenAI,
+  getTranscriber,
   isModelUnavailable,
   rememberTranscribeModel,
   transcribeModelCandidates,
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const openai = getOpenAI();
+    const openai = getTranscriber();
     let result: VerboseTranscription | null = null;
     let lastError: unknown = null;
 

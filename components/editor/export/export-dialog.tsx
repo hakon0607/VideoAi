@@ -106,7 +106,10 @@ export function ExportDialog({
       );
       if (!cancelled) setUndecodable(problems);
     };
-    void probe();
+    // A pre-flight check that rejects must not take the page with it.
+    void probe().catch(() => {
+      if (!cancelled) setSupported(true);
+    });
     return () => {
       cancelled = true;
     };

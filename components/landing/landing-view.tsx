@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Check,
   Film,
+  HeartHandshake,
   Layers,
   Music,
   Scissors,
@@ -30,6 +31,7 @@ export function LandingView({ signedIn }: { signedIn: boolean }) {
     { icon: Zap, title: t('landing.features.export.title'), body: t('landing.features.export.body') },
     { icon: Music, title: t('landing.features.sound.title'), body: t('landing.features.sound.body') },
     { icon: ShieldCheck, title: t('landing.features.team.title'), body: t('landing.features.team.body') },
+    { icon: HeartHandshake, title: t('landing.features.free.title'), body: t('landing.features.free.body') },
   ];
 
   const steps = [

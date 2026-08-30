@@ -7,6 +7,7 @@ import { Infinity as InfinityIcon, Shield } from 'lucide-react';
 import { useI18n } from '@/lib/i18n/context';
 import { LOCALES, LOCALE_LABELS, isLocale } from '@/lib/i18n/dictionaries';
 import { Button } from '@/components/ui/button';
+import { LocalStorageCard } from './local-storage-card';
 import { Field, Input, Select } from '@/components/ui/input';
 import { updateProfileAction } from '@/lib/actions/profile';
 import { useCredits } from '@/lib/credits/use-credits';
@@ -94,6 +95,8 @@ export function SettingsView({
           </div>
         </form>
       </section>
+
+      <LocalStorageCard />
 
       <section className="rounded-lg border border-line bg-surface p-5">
         <h2 className="mb-3 text-[13px] font-medium text-ink">{t('credits.title')}</h2>
