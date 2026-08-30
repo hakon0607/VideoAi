@@ -7,6 +7,22 @@ import type { Json } from '@/types/database';
 import { analyzeAudio } from './audio';
 import { probeImage, probeVideoOrAudio } from './probe';
 import { RESUMABLE_THRESHOLD, UploadTooLargeError, getMediaSizeLimit, uploadResumable } from './resumable';
+import { putLocalFile, requestPersistence } from './local-store';
+import { LOCAL_PREFIX } from './media-source';
+
+/**
+ * Where new uploads go.
+ *
+ * Local is the default, and the reason is money: video is the only genuinely
+ * large thing in this app, and hosted storage is priced for it. The browser
+ * already holds the file, and everything the editor does — preview, waveform,
+ * silence detection, export — reads it from there anyway. Set
+ * NEXT_PUBLIC_MEDIA_STORAGE=supabase to put the bytes in the cloud instead,
+ * which is what you want if the same account edits from several machines.
+ */
+export function mediaStorageMode(): 'local' | 'supabase' {
+  return process.env.NEXT_PUBLIC_MEDIA_STORAGE === 'supabase' ? 'supabase' : 'local';
+}
 
 export const ACCEPTED_MIME: Record<string, MediaAsset['kind']> = {
   'video/mp4': 'video',
@@ -89,22 +105,34 @@ export async function uploadMediaFile(
   if (!kind) throw new Error(`unsupported_file:${file.type || file.name}`);
   if (file.size > MAX_FILE_BYTES) throw new UploadTooLargeError(file.size, MAX_FILE_BYTES);
 
-  // Check the project's own limit before spending bandwidth on a file the
-  // bucket will reject. On the Supabase free plan this is 50 MB by default.
-  const limit = await getMediaSizeLimit();
-  if (limit !== null && file.size > limit) throw new UploadTooLargeError(file.size, limit);
+  const local = mediaStorageMode() === 'local';
+
+  if (!local) {
+    // Check the project's own limit before spending bandwidth on a file the
+    // bucket will reject. On the Supabase free plan this is 50 MB by default.
+    const limit = await getMediaSizeLimit();
+    if (limit !== null && file.size > limit) throw new UploadTooLargeError(file.size, limit);
+  }
 
   const supabase = createClient();
   const assetId = newId();
   const extension = (file.name.split('.').pop() ?? 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const storagePath = `user/${userId}/projects/${projectId}/media/${assetId}.${extension}`;
+  const storagePath = local
+    ? `${LOCAL_PREFIX}${assetId}`
+    : `user/${userId}/projects/${projectId}/media/${assetId}.${extension}`;
 
   onProgress({ stage: 'probing', fraction: 0 });
   const probe = kind === 'image' ? await probeImage(file) : await probeVideoOrAudio(file);
 
   onProgress({ stage: 'uploading', fraction: 0 });
   const report = (fraction: number) => onProgress({ stage: 'uploading', fraction });
-  if (file.size > RESUMABLE_THRESHOLD) {
+  if (local) {
+    // Ask once for storage the browser will not clear behind our back, then
+    // write the file. No network, so this is as fast as the disk.
+    await requestPersistence();
+    await putLocalFile(assetId, file);
+    report(1);
+  } else if (file.size > RESUMABLE_THRESHOLD) {
     // Big files go up in resumable chunks, so a dropped connection costs one
     // chunk rather than the whole upload.
     await uploadResumable(file, 'media', storagePath, report);
@@ -174,7 +202,9 @@ export async function uploadMediaFile(
     });
   }
 
-  const { data: signed } = await supabase.storage.from('media').createSignedUrl(storagePath, 60 * 60);
+  const signedUrl = local
+    ? URL.createObjectURL(file)
+    : (await supabase.storage.from('media').createSignedUrl(storagePath, 60 * 60)).data?.signedUrl ?? null;
 
   const asset: MediaAsset = {
     id: assetId,
@@ -199,7 +229,7 @@ export async function uploadMediaFile(
   };
 
   onProgress({ stage: 'done', fraction: 1 });
-  return { asset, analysis, signedUrl: signed?.signedUrl ?? null };
+  return { asset, analysis, signedUrl };
 }
 
 /**

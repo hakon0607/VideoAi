@@ -104,13 +104,17 @@ export async function loadEditorProject(projectId: string): Promise<EditorBootst
   const folders = (foldersRes.data ?? []).map(folderFromRow);
   const markers = (markersRes.data ?? []).map(markerFromRow);
 
+  // Only files that actually live in the bucket can be signed here. Local
+  // files and the generated sounds are resolved in the browser, which is the
+  // only place they exist.
   const mediaUrls: Record<string, string> = {};
-  if (assets.length) {
+  const hosted = assets.filter((asset) => !asset.storagePath.includes(':'));
+  if (hosted.length) {
     const { data: signed } = await supabase.storage
       .from('media')
-      .createSignedUrls(assets.map((a) => a.storagePath), 60 * 60);
+      .createSignedUrls(hosted.map((a) => a.storagePath), 60 * 60);
     const byPath = new Map((signed ?? []).map((s) => [s.path ?? '', s.signedUrl]));
-    for (const asset of assets) {
+    for (const asset of hosted) {
       const url = byPath.get(asset.storagePath);
       if (url) mediaUrls[asset.id] = url;
     }

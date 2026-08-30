@@ -1,5 +1,33 @@
 # How the assistant works
 
+## Which model
+
+The assistant talks to any provider that speaks the OpenAI chat-completions API
+*with tool calling*, because tool calling is the whole mechanism — the model
+does not write a plan for a human to follow, it calls the editor's own commands.
+
+| `AI_PROVIDER` | Endpoint | Cost |
+| --- | --- | --- |
+| `gemini` (default) | `generativelanguage.googleapis.com/v1beta/openai/` | Free tier, no card |
+| `groq` | `api.groq.com/openai/v1` | Free tier, no card |
+| `openrouter` | `openrouter.ai/api/v1` | Free models available |
+| `openai` | `api.openai.com/v1` | Paid |
+| `ollama` | `localhost:11434/v1` | Free, runs on your machine |
+
+`lib/openai/client.ts` holds the base URLs, the key lookup and a per-provider
+list of current model names. Nothing else in the codebase knows which provider
+is in use: `lib/ai/run.ts` builds tools from the action registry and reads the
+same response shape either way.
+
+Model names are the part that rots. Rather than pinning one and breaking the day
+it is retired, the client walks its list and remembers the first that answers.
+`AI_MODEL` pins one when you want a specific model.
+
+Transcription is configured separately, because the good free option is a
+different provider: Whisper on Groq. `TRANSCRIBE_PROVIDER=none` turns it off,
+and the assistant then says plainly that it cannot know what was said rather
+than guessing.
+
 ## The pipeline
 
 ```

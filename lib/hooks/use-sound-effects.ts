@@ -19,7 +19,9 @@ export function useSoundEffects(projectId: string, userId: string): void {
     if (!projectId || !userId) return;
     const run = () => {
       if (pendingSoundEffects().length === 0) return;
-      void ensureSoundEffectsPlayable(projectId, userId);
+      // A failure here is a save that will retry, not something to interrupt
+      // the user with — and an uncaught rejection would surface as a page error.
+      void ensureSoundEffectsPlayable(projectId, userId).catch(() => undefined);
     };
     run();
     return useEditorStore.subscribe((store, previous) => {

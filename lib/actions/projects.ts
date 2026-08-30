@@ -112,6 +112,23 @@ export async function deleteAssetAction(assetId: string): Promise<ActionResult> 
   return { ok: true };
 }
 
+/**
+ * Every asset id this account still owns.
+ *
+ * With media stored on the editor's own machine, deleting a project somewhere
+ * else cannot reach in and remove the files. The browser sweeps its own storage
+ * against this list instead, so a deleted project stops taking up disk.
+ */
+export async function listOwnedAssetIdsAction(): Promise<string[]> {
+  const supabase = await createServerSupabase();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return [];
+  const { data } = await supabase.from('media_assets').select('id,storage_path').eq('owner_id', auth.user.id);
+  return (data ?? [])
+    .filter((row) => String(row.storage_path ?? '').startsWith('local:'))
+    .map((row) => String(row.storage_path).slice('local:'.length));
+}
+
 export async function touchProjectAction(projectId: string): Promise<void> {
   const { supabase } = await requireUser();
   await supabase.from('projects').update({ last_opened_at: new Date().toISOString() }).eq('id', projectId);

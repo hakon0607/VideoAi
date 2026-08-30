@@ -351,8 +351,12 @@ export async function checkProjectDecodable(
     seen.add(clip.assetId);
     const url = urls[clip.assetId];
     if (!url) continue;
-    const input = new Input({ source: new UrlSource(url), formats: ALL_FORMATS });
+    // Constructing the Input can throw on its own for an unreachable URL, so it
+    // belongs inside the try: this is a pre-flight check, and a check that
+    // throws is worse than no check.
+    let input: Input | null = null;
     try {
+      input = new Input({ source: new UrlSource(url), formats: ALL_FORMATS });
       const track = clip.kind === 'audio' ? await input.getPrimaryAudioTrack() : await input.getPrimaryVideoTrack();
       if (track && !(await track.canDecode())) {
         problems.push(`${clip.name} (${track.codec ?? 'unknown codec'})`);
@@ -360,7 +364,7 @@ export async function checkProjectDecodable(
     } catch {
       problems.push(clip.name);
     } finally {
-      input.dispose();
+      input?.dispose();
     }
   }
   return problems;

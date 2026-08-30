@@ -5,6 +5,7 @@ import { effectActions } from './effects';
 import { enhanceActions } from './enhance';
 import { keyframeActions } from './keyframes';
 import { mediaActions } from './media';
+import { musicActions } from './music';
 import { projectActions } from './project';
 import { sfxActions } from './sfx';
 import { textActions } from './text';
@@ -24,6 +25,7 @@ export const ALL_ACTIONS: AnyActionDef[] = [
   ...textActions,
   ...audioActions,
   ...sfxActions,
+  ...musicActions,
   ...effectActions,
   ...enhanceActions,
   ...keyframeActions,

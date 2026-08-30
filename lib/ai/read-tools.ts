@@ -4,6 +4,7 @@ import { clipEnd } from '@/lib/editor/time';
 import { gapsOnTrack, timelineDuration } from '@/lib/editor/selectors';
 import { EditorError } from '@/lib/editor/errors';
 import { SFX_LIBRARY_INFO } from '@/lib/editor/actions/sfx-info';
+import { MUSIC_LIBRARY_INFO } from '@/lib/editor/actions/music-info';
 import { findHighlights, inverseRanges } from './highlights';
 import {
   buildProjectContext,
@@ -284,6 +285,18 @@ export const READ_TOOLS: ReadToolDef[] = [
       const all = SFX_LIBRARY_INFO;
       const filtered = params.category ? all.filter((s) => s.category === params.category) : all;
       return { count: filtered.length, sounds: filtered };
+    },
+  }),
+
+  def({
+    name: 'get_music',
+    description:
+      'The built-in music catalogue. Every bed is synthesised on demand and free to use, so any of these can go under an edit immediately with add_music. Pick by mood and tempo, then duck it under the speech with auto_duck.',
+    schema: z.object({ mood: z.string().optional() }),
+    run: (params) => {
+      const all = MUSIC_LIBRARY_INFO;
+      const filtered = params.mood ? all.filter((bed) => bed.mood === params.mood) : all;
+      return { count: filtered.length, beds: filtered };
     },
   }),
 

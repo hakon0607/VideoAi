@@ -29,11 +29,11 @@ export function useCredits(pollMs = 60_000) {
       if (!error) setStatus(parseCreditStatus(data));
       setLoading(false);
     };
-    void load();
+    void load().catch(() => undefined);
     if (!pollMs) return () => {
       cancelled = true;
     };
-    const id = window.setInterval(() => void load(), pollMs);
+    const id = window.setInterval(() => void load().catch(() => undefined), pollMs);
     return () => {
       cancelled = true;
       window.clearInterval(id);

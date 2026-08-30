@@ -162,6 +162,30 @@ Locked clips — and clips on a locked track — are immovable. A ripple edit
 settles the clips it moves around them (`settleAfterRipple`) instead of stacking
 them underneath.
 
+## Where files live
+
+`media_assets.storage_path` is a small union spelled as a string prefix, and
+every layer branches on it:
+
+| Prefix | Where the bytes are | Who can read it |
+| --- | --- | --- |
+| `local:<id>` | The browser's own storage on the machine that uploaded it | That machine |
+| `sfx:<name>` | Nowhere — synthesised on demand | Everyone, identically |
+| `music:<name>` | Nowhere — synthesised on demand | Everyone, identically |
+| `library:<path>` | The public `library` bucket, one copy for all accounts | Everyone |
+| anything else | The private `media` bucket, as before | The owner and project members |
+
+`lib/media/media-source.ts` is the only place that knows how to turn each of
+those into something a `<video>` element or the exporter can read, and
+`originOf()` is what the server uses to decide which paths it can sign at all —
+asking Storage to sign `sfx:whoosh` would be a request for a file that has never
+existed.
+
+The generated prefixes are the interesting case: because the synthesis is
+deterministic, the path *is* the file. Nothing is uploaded, nothing expires, and
+a project sounds identical on every machine that opens it. The only thing that
+reaches the database is the asset row, because a clip carries a foreign key.
+
 ## Trust boundaries
 
 - The **anon key** is public. RLS is the security boundary, and `supabase/test/10_rls_test.sql` proves it.
