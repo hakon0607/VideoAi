@@ -6,6 +6,7 @@ import { newId } from '@/lib/editor/ids';
 import type { Json } from '@/types/database';
 import { analyzeAudio } from './audio';
 import { probeImage, probeVideoOrAudio } from './probe';
+import { RESUMABLE_THRESHOLD, UploadTooLargeError, getMediaSizeLimit, uploadResumable } from './resumable';
 
 export const ACCEPTED_MIME: Record<string, MediaAsset['kind']> = {
   'video/mp4': 'video',
@@ -47,7 +48,8 @@ const EXTENSION_FALLBACK: Record<string, MediaAsset['kind']> = {
   webp: 'image',
 };
 
-export const MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024;
+/** The app's own ceiling. The project's bucket limit is usually lower. */
+export const MAX_FILE_BYTES = 5 * 1024 * 1024 * 1024;
 
 export function classifyFile(file: File): MediaAsset['kind'] | null {
   const byMime = ACCEPTED_MIME[file.type.toLowerCase()];
@@ -81,10 +83,16 @@ export async function uploadMediaFile(
   projectId: string,
   userId: string,
   onProgress: (progress: UploadProgress) => void,
+  folderId?: string | null,
 ): Promise<UploadResult> {
   const kind = classifyFile(file);
   if (!kind) throw new Error(`unsupported_file:${file.type || file.name}`);
-  if (file.size > MAX_FILE_BYTES) throw new Error('file_too_large');
+  if (file.size > MAX_FILE_BYTES) throw new UploadTooLargeError(file.size, MAX_FILE_BYTES);
+
+  // Check the project's own limit before spending bandwidth on a file the
+  // bucket will reject. On the Supabase free plan this is 50 MB by default.
+  const limit = await getMediaSizeLimit();
+  if (limit !== null && file.size > limit) throw new UploadTooLargeError(file.size, limit);
 
   const supabase = createClient();
   const assetId = newId();
@@ -95,9 +103,14 @@ export async function uploadMediaFile(
   const probe = kind === 'image' ? await probeImage(file) : await probeVideoOrAudio(file);
 
   onProgress({ stage: 'uploading', fraction: 0 });
-  await uploadWithProgress(file, storagePath, (fraction) =>
-    onProgress({ stage: 'uploading', fraction }),
-  );
+  const report = (fraction: number) => onProgress({ stage: 'uploading', fraction });
+  if (file.size > RESUMABLE_THRESHOLD) {
+    // Big files go up in resumable chunks, so a dropped connection costs one
+    // chunk rather than the whole upload.
+    await uploadResumable(file, 'media', storagePath, report);
+  } else {
+    await uploadWithProgress(file, storagePath, report);
+  }
 
   let analysis: MediaAnalysis | null = null;
   let waveform: number[] | null = null;
@@ -145,7 +158,8 @@ export async function uploadMediaFile(
     channels: probe.channels,
     waveform: waveform as unknown as Json,
     thumbnail_url: probe.thumbnail,
-    analysis_status: analysis ? 'basic' : 'basic',
+    folder_id: folderId ?? null,
+    analysis_status: 'basic',
   });
   if (insertError) throw new Error(insertError.message);
 
@@ -165,6 +179,7 @@ export async function uploadMediaFile(
   const asset: MediaAsset = {
     id: assetId,
     projectId,
+    folderId: folderId ?? null,
     kind,
     name: file.name,
     storagePath,
@@ -208,8 +223,23 @@ async function uploadWithProgress(
       if (event.lengthComputable) onProgress(event.loaded / event.total);
     };
     xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new Error(`Upload failed (${xhr.status}): ${xhr.responseText.slice(0, 200)}`));
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+        return;
+      }
+      if (xhr.status === 413) {
+        reject(new Error('storage_limit'));
+        return;
+      }
+      // Storage answers with JSON; show its message rather than a bare status.
+      let detail = xhr.responseText.slice(0, 300);
+      try {
+        const body = JSON.parse(xhr.responseText) as { message?: string; error?: string };
+        detail = body.message ?? body.error ?? detail;
+      } catch {
+        // Not JSON; the raw text is the best we have.
+      }
+      reject(new Error(`Upload failed (${xhr.status}): ${detail}`));
     };
     xhr.onerror = () => reject(new Error('Upload failed: the network request was blocked or interrupted.'));
     xhr.onabort = () => reject(new Error('Upload cancelled.'));

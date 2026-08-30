@@ -6,6 +6,7 @@ import { isMediaClip } from '@/types/editor';
 import { animatedValues } from '@/lib/editor/keyframes';
 import { clipEnd } from '@/lib/editor/time';
 import { getTrack } from '@/lib/editor/selectors';
+import { buildCompressor, buildFilterChain, dbToGain, duckFactorAt } from './audio-graph';
 
 /** Opens each asset once and hands out its audio sink on demand. */
 export class AudioSourcePool {
@@ -140,22 +141,41 @@ export async function renderAudioSegment(
     const startAt = windowStart - segment.start;
     const endAt = windowEnd - segment.start;
 
-    // Volume, keyframes and fades become a gain envelope, sampled often enough
-    // that an animated level is smooth.
-    const steps = Math.max(2, Math.min(240, Math.ceil((endAt - startAt) * 20)));
+    // Volume, keyframes, fades and ducking all become one gain envelope,
+    // sampled often enough that an animated level is smooth and a duck ramps
+    // rather than clicks.
+    const steps = Math.max(2, Math.min(1200, Math.ceil((endAt - startAt) * 40)));
     gain.gain.setValueAtTime(0, 0);
+    const staticGain = dbToGain(clip.audio.gainDb ?? 0);
     for (let i = 0; i <= steps; i += 1) {
       const t = startAt + ((endAt - startAt) * i) / steps;
-      const local = t + segment.start - clip.start;
+      const timelineTime = t + segment.start;
+      const local = timelineTime - clip.start;
       const values = animatedValues(clip, local);
-      let value = values.volume * trackGain;
+      let value = values.volume * trackGain * staticGain;
       if (clip.fadeIn > 0 && local < clip.fadeIn) value *= local / clip.fadeIn;
       const remaining = clip.duration - local;
       if (clip.fadeOut > 0 && remaining < clip.fadeOut) value *= Math.max(0, remaining / clip.fadeOut);
+      value *= duckFactorAt(state, clip, timelineTime);
       gain.gain.setValueAtTime(Math.max(0, Math.min(4, value)), Math.max(0, t));
     }
 
-    node.connect(gain).connect(context.destination);
+    // Filter chain and compressor sit between the source and the envelope, so
+    // the level you set is the level after processing.
+    const chain = buildFilterChain(context, clip.audio.filter ?? 'none');
+    const compressor = buildCompressor(context, clip.audio.compression ?? 0);
+
+    let head: AudioNode = node;
+    if (chain) {
+      head.connect(chain.input);
+      head = chain.output;
+    }
+    if (compressor) {
+      head.connect(compressor);
+      head = compressor;
+    }
+    head.connect(gain).connect(context.destination);
+
     node.start(Math.max(0, startAt));
     node.stop(Math.max(0.0001, endAt));
   }

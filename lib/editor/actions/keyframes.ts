@@ -1,7 +1,14 @@
 import { z } from 'zod';
 import type { Keyframe, KeyframeProperty } from '@/types/editor';
 import { EASINGS, KEYFRAMABLE_PROPERTIES } from '@/types/editor';
-import { defineAction, requireUnlockedClip, updateClip, uuidLike, type AnyActionDef } from '../action-kit';
+import {
+  defineAction,
+  idsFor,
+  requireUnlockedClip,
+  updateClip,
+  uuidLike,
+  type AnyActionDef,
+} from '../action-kit';
 import { EditorError } from '../errors';
 import { q } from '../time';
 
@@ -86,7 +93,7 @@ const animateProperty = defineAction({
     easing: z.enum(EASINGS).default('ease_in_out'),
     keyframeIds: z.array(uuidLike).length(2).optional(),
   }),
-  prepare: (params, ctx) => ({ ...params, keyframeIds: params.keyframeIds ?? [ctx.newId(), ctx.newId()] }),
+  prepare: (params, ctx) => ({ ...params, keyframeIds: idsFor(params.keyframeIds, 2, ctx) }),
   apply: (state, params) => {
     const clip = requireUnlockedClip(state, params.clipId);
     const property = validateProperty(clip, params.property);

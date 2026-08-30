@@ -22,6 +22,9 @@ keys with `on delete cascade` toward the project, and Row Level Security.
 | `exports` | Render jobs: status, progress, settings, output path |
 | `user_credits`, `credit_costs`, `credit_ledger` | The credit system |
 
+Every table carries a `comment`, so the Supabase table editor tells you what a
+row is and whose it is without cross-referencing ids.
+
 ## Views
 
 The spec asks for `text_elements`, `captions`, `audio_elements` and
@@ -32,6 +35,36 @@ would mean four code paths for one behaviour, and joins on every timeline read.
 
 The views give the vocabulary without the duplication, and they are
 `security_invoker`, so they inherit the RLS of `clips`.
+
+## Admin views
+
+Four views answer "who owns what" across every user:
+
+| View | Rows |
+| --- | --- |
+| `admin_users` | Every account: email, username, credits, storage, project and AI counts, last sign-in |
+| `admin_projects` | Every project with its owner's email, size, clip count and AI edits |
+| `admin_media` | Every file with its owner, project, size and analysis status |
+| `admin_credit_activity` | The credit ledger with usernames and project names joined in |
+
+They run with the view owner's rights, so they can see across users — and each
+one ends in `where public.is_admin()`, so a non-admin selecting from them gets
+zero rows rather than an error or somebody else's data. `project_storage` is the
+non-admin counterpart: it is `security_invoker`, so it shows you your own usage.
+
+The matching functions (`admin_overview`, `admin_set_credits`,
+`admin_set_admin`, `admin_set_credit_cost`, `admin_delete_project`,
+`admin_orphaned_paths`) are `SECURITY DEFINER` and each re-checks `is_admin()`
+before doing anything. `admin_set_admin` refuses to change the caller's own
+flag, so the last admin cannot lock themselves out.
+
+## Deleting and storage
+
+Postgres must never delete from `storage.objects` directly — the row is only
+half the file, and removing it orphans the object in the backing store. So
+`admin_delete_project` and `project_storage_paths` *return* the paths that need
+clearing and the application removes them through the storage API. That is why
+deleting a project genuinely frees space instead of leaving gigabytes behind.
 
 ## Why some things are JSONB
 

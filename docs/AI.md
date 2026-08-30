@@ -48,6 +48,10 @@ Read tools exist so the model never has to guess:
 | `find_gaps` | Empty stretches on a track |
 | `get_media_assets` | Durations, resolutions, what is transcribed |
 | `get_selection` | What the user has selected and where the playhead is |
+| `find_highlights` | Scores windows of the transcript on word density, loudness, reaction words and dead air, so "take the best bits" starts from evidence rather than a guess |
+| `plan_shortened_cut` | Turns a target length into the exact ranges to remove, in timeline seconds |
+| `get_sound_effects` | The synthesised sound catalogue, with a line on what each one is for |
+| `get_markers` | Markers the user placed, so "fix the bit I flagged" resolves to a time |
 
 The conversions matter more than they look. Source time and timeline time differ
 by the clip's in-point, its speed and whether it is reversed. Asking a language

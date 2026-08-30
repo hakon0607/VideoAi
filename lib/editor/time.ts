@@ -36,6 +36,23 @@ export function snapToFrame(time: number, fps: number): number {
   return q(Math.round(time * fps) / fps);
 }
 
+/**
+ * Ruler and duration labels. Frames are deliberately left out: on a ruler they
+ * are noise, and `00:05:00` reading as five minutes rather than five seconds is
+ * exactly the confusion that makes long timelines hard to navigate.
+ */
+export function formatClockTime(seconds: number, totalDuration = seconds): string {
+  const safe = Math.max(0, seconds);
+  const s = Math.floor(safe % 60);
+  const m = Math.floor(safe / 60) % 60;
+  const h = Math.floor(safe / 3600);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  // Keep the shape stable across the whole ruler so labels do not jump width,
+  // and never fold an hour back to 0:00 because the project is short.
+  if (Math.max(totalDuration, safe) >= 3600) return `${h}:${pad(m)}:${pad(s)}`;
+  return `${m}:${pad(s)}`;
+}
+
 export function formatTimecode(seconds: number, fps = 30): string {
   const safe = Math.max(0, seconds);
   const totalFrames = Math.round(safe * fps);

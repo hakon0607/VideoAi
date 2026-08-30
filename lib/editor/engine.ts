@@ -2,6 +2,7 @@ import type { EditorState } from '@/types/editor';
 import type { ActionContext, AnyActionDef, EditorAction } from './action-kit';
 import { ALL_ACTIONS, internalOnlyActionTypes } from './actions';
 import { EditorError } from './errors';
+import { assertIntegrity } from './integrity';
 import { newId } from './ids';
 
 /** type -> definition. Built once at module load. */
@@ -60,6 +61,9 @@ export function applyAction(
   }
   const prepared = def.prepare ? def.prepare(parsed.data, ctx) : parsed.data;
   const outcome = def.apply(state, prepared, ctx);
+  // Reject anything that would leave the project in a shape the renderer, the
+  // timeline or the database cannot handle, rather than storing it.
+  assertIntegrity(outcome.state, action.type);
   return {
     state: outcome.state,
     applied: {

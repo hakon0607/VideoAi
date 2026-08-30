@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useEditorStore } from '@/lib/editor/store';
 import { toSavePayload } from '@/lib/editor/serialize';
 import { createClient } from '@/lib/supabase/client';
+import { ensureSoundEffectsPlayable, pendingSoundEffects } from '@/lib/media/sfx-provision';
 import type { Json } from '@/types/database';
 
 const DEBOUNCE_MS = 1400;
@@ -40,6 +41,21 @@ async function performSave(controller: Controller): Promise<void> {
   try {
     const supabase = createClient();
     let thumbnailPath: string | null = null;
+
+    // A sound effect starts life as a placeholder asset with no row in the
+    // database. Clips point at it, and clips carry a foreign key, so the whole
+    // save would be rejected until the sound is a real file. Uploading it first
+    // is what makes an assistant-scored edit saveable.
+    if (controller.userId && pendingSoundEffects().length > 0) {
+      await ensureSoundEffectsPlayable(store.state.projectId, controller.userId);
+      const stillPending = pendingSoundEffects();
+      if (stillPending.length > 0) {
+        throw new Error(
+          `Could not upload ${stillPending.length} sound effect${stillPending.length === 1 ? '' : 's'}. ` +
+            'The project was not saved; check your connection and try again.',
+        );
+      }
+    }
 
     const needsThumbnail =
       controller.captureThumbnail &&

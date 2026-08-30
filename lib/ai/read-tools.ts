@@ -3,6 +3,8 @@ import type { EditorState } from '@/types/editor';
 import { clipEnd } from '@/lib/editor/time';
 import { gapsOnTrack, timelineDuration } from '@/lib/editor/selectors';
 import { EditorError } from '@/lib/editor/errors';
+import { SFX_LIBRARY_INFO } from '@/lib/editor/actions/sfx-info';
+import { findHighlights, inverseRanges } from './highlights';
 import {
   buildProjectContext,
   findInTranscript,
@@ -211,6 +213,85 @@ export const READ_TOOLS: ReadToolDef[] = [
           usedByClips: ctx.state.clips.filter((c) => 'assetId' in c && c.assetId === asset.id).map((c) => c.id),
         };
       }),
+  }),
+
+  def({
+    name: 'find_highlights',
+    description:
+      'Rank the moments most worth keeping, scored on speech density, loudness, reaction words and dead air. Returns TIMELINE ranges with the spoken text, so you can read them and decide which are actually good. Pair with `remove_ranges` on the inverse to cut everything else.',
+    schema: z.object({
+      targetSeconds: z.number().min(2).max(60).default(9).describe('Roughly how long each candidate should be.'),
+      limit: z.number().int().min(1).max(40).default(12),
+      assetId: z.string().optional(),
+    }),
+    run: (params, ctx) => {
+      const highlights = findHighlights(ctx.state, {
+        targetSeconds: params.targetSeconds,
+        limit: params.limit,
+        assetId: params.assetId,
+      });
+      if (highlights.length === 0) {
+        return {
+          count: 0,
+          message:
+            'No transcript to score. Ask the user to transcribe the media first, or work from find_silences instead.',
+        };
+      }
+      return {
+        count: highlights.length,
+        note: 'Ranked best first. These are timeline seconds.',
+        highlights: highlights.map((h) => ({
+          start: Math.round(h.start * 1000) / 1000,
+          end: Math.round(h.end * 1000) / 1000,
+          score: h.score,
+          why: h.reasons,
+          text: h.text,
+        })),
+      };
+    },
+  }),
+
+  def({
+    name: 'plan_shortened_cut',
+    description:
+      'Given the highlights you want to keep, returns the ranges to REMOVE so only those survive. Feed the result straight into remove_ranges. This is the reliable way to build a short version from a long recording.',
+    schema: z.object({
+      keep: z.array(z.object({ start: z.number().min(0), end: z.number().min(0) })).min(1).max(100),
+      padding: z.number().min(0).max(3).default(0.15).describe('Seconds of breathing room kept around each piece.'),
+    }),
+    run: (params, ctx) => {
+      const duration = timelineDuration(ctx.state);
+      const remove = inverseRanges(params.keep, duration, params.padding);
+      const kept = params.keep.reduce((sum, r) => sum + (r.end - r.start), 0);
+      return {
+        timelineDuration: duration,
+        keptSeconds: Math.round(kept * 100) / 100,
+        removeRanges: remove.map((r) => ({
+          start: Math.round(r.start * 1000) / 1000,
+          end: Math.round(r.end * 1000) / 1000,
+        })),
+        note: 'Pass removeRanges to remove_ranges with ripple true.',
+      };
+    },
+  }),
+
+  def({
+    name: 'get_sound_effects',
+    description:
+      'The built-in sound effect catalogue. Every sound is synthesised on demand, so any of these can be used immediately with add_sound_effect or add_sound_effects.',
+    schema: z.object({ category: z.string().optional() }),
+    run: (params) => {
+      const all = SFX_LIBRARY_INFO;
+      const filtered = params.category ? all.filter((s) => s.category === params.category) : all;
+      return { count: filtered.length, sounds: filtered };
+    },
+  }),
+
+  def({
+    name: 'get_markers',
+    description: 'Named points the user (or you) placed on the timeline.',
+    schema: z.object({}),
+    run: (_params, ctx) => ctx.state.markers.map((m) => ({ id: m.id, time: m.time, label: m.label })),
   }),
 
   def({

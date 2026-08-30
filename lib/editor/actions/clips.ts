@@ -6,17 +6,27 @@ import {
   requireAsset,
   requireClip,
   requireTrack,
+  isClipLocked,
   requireUnlockedClip,
   updateClip,
   uuidLike,
   withClips,
   type AnyActionDef,
 } from '../action-kit';
-import { baseClipFields, clipFitsTrack } from '../defaults';
+import { baseClipFields, clipFitsTrack, defaultAudioProcessing } from '../defaults';
 import { EditorError } from '../errors';
 import { clipEnd, q } from '../time';
 import { clipsOnTrack, findFreeSlot } from '../selectors';
-import { MIN_CLIP_DURATION, shiftClip, splitClipAt, subtractRange, trimClipEnd, trimClipStart } from '../clip-ops';
+import {
+  MIN_CLIP_DURATION,
+  settleAfterRipple,
+  shiftClip,
+  splitClipAt,
+  subtractRange,
+  trimClipEnd,
+  trimClipStart,
+} from '../clip-ops';
+import { freeEndOnTrack, freeStartOnTrack, placeClip } from '../placement';
 
 const createClip = defineAction({
   type: 'create_clip',
@@ -31,8 +41,13 @@ const createClip = defineAction({
     duration: z.number().min(MIN_CLIP_DURATION).optional(),
     sourceIn: z.number().min(0).default(0),
     name: z.string().min(1).max(160).optional(),
+    newTrackId: uuidLike.optional(),
   }),
-  prepare: (params, ctx) => ({ ...params, clipId: params.clipId ?? ctx.newId() }),
+  prepare: (params, ctx) => ({
+    ...params,
+    clipId: params.clipId ?? ctx.newId(),
+    newTrackId: params.newTrackId ?? ctx.newId(),
+  }),
   apply: (state, params) => {
     const clipId = params.clipId as string;
     const track = requireTrack(state, params.trackId);
@@ -49,9 +64,14 @@ const createClip = defineAction({
     const assetDuration = asset.kind === 'image' ? 5 : asset.duration;
     const available = Math.max(MIN_CLIP_DURATION, assetDuration - params.sourceIn);
     const duration = q(Math.min(params.duration ?? available, asset.kind === 'image' ? params.duration ?? 5 : available));
-    const start = q(params.start ?? findFreeSlot(state, track.id, duration));
+    const start = q(params.start ?? findFreeSlot(state, track.id));
+    // When the requested spot is taken the clip moves to the next free
+    // compatible track, adding one if needed, rather than hiding behind what is
+    // already there.
+    const placement = placeClip(state, track, kind, start, start + duration, params.newTrackId as string);
+
     const clip: MediaClip = {
-      ...baseClipFields(clipId, track.id, start, duration, params.name ?? asset.name),
+      ...baseClipFields(clipId, placement.trackId, start, duration, params.name ?? asset.name),
       kind,
       assetId: asset.id,
       sourceIn: q(params.sourceIn),
@@ -63,10 +83,16 @@ const createClip = defineAction({
       fadeOut: 0,
       crop: null,
       freeze: false,
+      audio: defaultAudioProcessing(),
     };
+    const next = placement.createdTrack
+      ? { ...state, tracks: [...state.tracks, placement.createdTrack] }
+      : state;
+    const targetName = placement.createdTrack?.name ?? track.name;
+
     return {
-      state: withClips(state, [...state.clips, clip]),
-      description: `Added "${clip.name}" to ${track.name} at ${start.toFixed(2)} s`,
+      state: withClips(next, [...next.clips, clip]),
+      description: `Added "${clip.name}" to ${targetName} at ${start.toFixed(2)} s`,
     };
   },
 });
@@ -105,8 +131,10 @@ const trimClip = defineAction({
     }
     const clip = requireUnlockedClip(state, params.clipId);
     let next = clip;
-    if (params.end !== undefined) next = trimClipEnd(next, params.end);
-    if (params.start !== undefined) next = trimClipStart(next, params.start);
+    // Growing a clip must never slide it under its neighbours: the free space
+    // on either side is the hard limit.
+    if (params.end !== undefined) next = trimClipEnd(next, Math.min(params.end, freeEndOnTrack(state, clip)));
+    if (params.start !== undefined) next = trimClipStart(next, Math.max(params.start, freeStartOnTrack(state, clip)));
     return {
       state: updateClip(state, clip.id, () => next),
       description: `Trimmed "${clip.name}" to ${next.start.toFixed(2)}–${clipEnd(next).toFixed(2)} s`,
@@ -122,22 +150,43 @@ const moveClip = defineAction({
     clipId: uuidLike,
     start: z.number().min(0).optional(),
     trackId: uuidLike.optional(),
+    newTrackId: uuidLike.optional(),
   }),
+  prepare: (params, ctx) => ({ ...params, newTrackId: params.newTrackId ?? ctx.newId() }),
   apply: (state, params) => {
     const clip = requireUnlockedClip(state, params.clipId);
     let next: Clip = { ...clip };
     if (params.start !== undefined) next = { ...next, start: q(params.start) };
+
+    let target = requireTrack(state, clip.trackId);
     if (params.trackId && params.trackId !== clip.trackId) {
-      const track = requireTrack(state, params.trackId);
-      if (!clipFitsTrack(clip.kind, track.kind)) {
-        throw new EditorError('incompatible_track', `A ${clip.kind} clip cannot go on a ${track.kind} track.`, {
-          trackId: track.id,
+      target = requireTrack(state, params.trackId);
+      if (!clipFitsTrack(clip.kind, target.kind)) {
+        throw new EditorError('incompatible_track', `A ${clip.kind} clip cannot go on a ${target.kind} track.`, {
+          trackId: target.id,
         });
       }
-      next = { ...next, trackId: track.id };
     }
+
+    // Dropping a clip on top of another one would hide it, so it lands on the
+    // next free lane instead — the same rule as adding media.
+    const placement = placeClip(
+      state,
+      target,
+      clip.kind,
+      next.start,
+      next.start + next.duration,
+      params.newTrackId as string,
+      clip.id,
+    );
+    next = { ...next, trackId: placement.trackId };
+
+    const withTrack = placement.createdTrack
+      ? { ...state, tracks: [...state.tracks, placement.createdTrack] }
+      : state;
+
     return {
-      state: updateClip(state, clip.id, () => next),
+      state: updateClip(withTrack, clip.id, () => next),
       description: `Moved "${clip.name}" to ${next.start.toFixed(2)} s`,
     };
   },
@@ -196,20 +245,39 @@ const duplicateClip = defineAction({
     newClipId: uuidLike.optional(),
     start: z.number().min(0).optional(),
     trackId: uuidLike.optional(),
+    newTrackId: uuidLike.optional(),
   }),
-  prepare: (params, ctx) => ({ ...params, newClipId: params.newClipId ?? ctx.newId() }),
+  prepare: (params, ctx) => ({
+    ...params,
+    newClipId: params.newClipId ?? ctx.newId(),
+    newTrackId: params.newTrackId ?? ctx.newId(),
+  }),
   apply: (state, params) => {
     const clip = requireClip(state, params.clipId);
-    const trackId = params.trackId ?? clip.trackId;
-    requireTrack(state, trackId);
+    const track = requireTrack(state, params.trackId ?? clip.trackId);
+    if (!clipFitsTrack(clip.kind, track.kind)) {
+      throw new EditorError(
+        'incompatible_track',
+        `A ${clip.kind} clip cannot go on a ${track.kind} track.`,
+        { trackId: track.id, trackKind: track.kind, clipKind: clip.kind },
+      );
+    }
+    const start = q(params.start ?? clipEnd(clip));
+    // A copy dropped on an occupied spot goes to a free lane rather than
+    // disappearing behind the clip that is already there.
+    const placement = placeClip(state, track, clip.kind, start, start + clip.duration, params.newTrackId as string);
+
     const copy: Clip = {
       ...structuredClone(clip),
       id: params.newClipId as string,
-      trackId,
-      start: q(params.start ?? clipEnd(clip)),
+      trackId: placement.trackId,
+      start,
       name: `${clip.name} copy`,
     };
-    return { state: withClips(state, [...state.clips, copy]), description: `Duplicated "${clip.name}"` };
+    const next = placement.createdTrack
+      ? { ...state, tracks: [...state.tracks, placement.createdTrack] }
+      : state;
+    return { state: withClips(next, [...next.clips, copy]), description: `Duplicated "${clip.name}"` };
   },
 });
 
@@ -236,10 +304,11 @@ const removeRange = defineAction({
     const targetTracks = params.trackIds ? new Set(params.trackIds) : null;
     if (targetTracks) for (const id of targetTracks) requireTrack(state, id);
     const span = end - start;
+    const frozen = (clip: Clip) =>
+      isClipLocked(state, clip) || Boolean(targetTracks && !targetTracks.has(clip.trackId));
     const clips: Clip[] = [];
     for (const clip of state.clips) {
-      const inScope = !targetTracks || targetTracks.has(clip.trackId);
-      if (!inScope || clip.locked) {
+      if (frozen(clip)) {
         clips.push(clip);
         continue;
       }
@@ -247,11 +316,10 @@ const removeRange = defineAction({
       for (const piece of pieces) clips.push(piece);
     }
     const rippled = params.ripple
-      ? clips.map((c) => {
-          const inScope = !targetTracks || targetTracks.has(c.trackId);
-          if (!inScope || c.locked) return c;
-          return c.start >= end - 0.0001 ? shiftClip(c, -span) : c;
-        })
+      ? settleAfterRipple(
+          clips.map((c) => (frozen(c) ? c : c.start >= end - 0.0001 ? shiftClip(c, -span) : c)),
+          frozen,
+        )
       : clips;
     return {
       state: withClips(state, rippled),
@@ -282,25 +350,25 @@ const removeRanges = defineAction({
     }
     const targetTracks = params.trackIds ? new Set(params.trackIds) : null;
     if (targetTracks) for (const id of targetTracks) requireTrack(state, id);
+    const frozen = (clip: Clip) =>
+      isClipLocked(state, clip) || Boolean(targetTracks && !targetTracks.has(clip.trackId));
     let clips = state.clips;
     let removed = 0;
     for (const range of sorted) {
       const span = range.end - range.start;
       const next: Clip[] = [];
       for (const clip of clips) {
-        const inScope = !targetTracks || targetTracks.has(clip.trackId);
-        if (!inScope || clip.locked) {
+        if (frozen(clip)) {
           next.push(clip);
           continue;
         }
         for (const piece of subtractRange(clip, range.start, range.end, () => ctx.newId())) next.push(piece);
       }
       clips = params.ripple
-        ? next.map((c) => {
-            const inScope = !targetTracks || targetTracks.has(c.trackId);
-            if (!inScope || c.locked) return c;
-            return c.start >= range.end - 0.0001 ? shiftClip(c, -span) : c;
-          })
+        ? settleAfterRipple(
+            next.map((c) => (frozen(c) ? c : c.start >= range.end - 0.0001 ? shiftClip(c, -span) : c)),
+            frozen,
+          )
         : next;
       removed += span;
     }
@@ -347,19 +415,29 @@ const reorderClips = defineAction({
     start: z.number().min(0).default(0),
   }),
   apply: (state, params) => {
-    requireTrack(state, params.trackId);
+    const track = requireTrack(state, params.trackId);
     const byId = new Map(state.clips.map((c) => [c.id, c]));
     let cursor = q(params.start);
     const positions = new Map<string, number>();
     for (const id of params.clipIds) {
       const clip = byId.get(id);
       if (!clip) throw new EditorError('clip_not_found', `No clip with id ${id}.`, { clipId: id });
+      if (!clipFitsTrack(clip.kind, track.kind)) {
+        throw new EditorError(
+          'incompatible_track',
+          `"${clip.name}" is a ${clip.kind} clip and cannot go on a ${track.kind} track.`,
+          { clipId: clip.id, trackId: track.id, trackKind: track.kind, clipKind: clip.kind },
+        );
+      }
       positions.set(id, cursor);
       cursor = q(cursor + clip.duration);
     }
-    const clips = state.clips.map((c) =>
+    const moved = state.clips.map((c) =>
       positions.has(c.id) ? { ...c, trackId: params.trackId, start: positions.get(c.id) as number } : c,
     );
+    // Anything already on the track would end up hidden behind the new run, so
+    // it settles after it rather than disappearing.
+    const clips = settleAfterRipple(moved, (c) => positions.has(c.id) || isClipLocked(state, c));
     return { state: withClips(state, clips), description: `Reordered ${params.clipIds.length} clips` };
   },
 });
@@ -381,7 +459,31 @@ const setClipSpeed = defineAction({
       throw new EditorError('invalid_parameters', 'Speed only applies to video and audio clips.', { clipId: clip.id });
     }
     const oldDuration = clip.duration;
-    const duration = q((clip.duration * clip.speed) / params.speed);
+    const wanted = q((clip.duration * clip.speed) / params.speed);
+    // Slowing a clip down makes it longer. Without a ripple it may only grow
+    // into free space, and if there is none the request is refused rather than
+    // silently hiding the neighbour.
+    if (wanted < MIN_CLIP_DURATION) {
+      throw new EditorError(
+        'invalid_range',
+        `${params.speed}x would leave "${clip.name}" too short to see. Trim it first, or use a lower speed.`,
+        { clipId: clip.id, resulting: wanted },
+      );
+    }
+    let duration = wanted;
+    if (!params.ripple) {
+      const room = q(freeEndOnTrack(state, clip) - clip.start);
+      if (wanted > room) {
+        if (room < MIN_CLIP_DURATION) {
+          throw new EditorError(
+            'invalid_range',
+            `"${clip.name}" has no room to grow on its track. Use ripple, or move the clip after it first.`,
+            { clipId: clip.id, room },
+          );
+        }
+        duration = room;
+      }
+    }
     const next: MediaClip = { ...clip, speed: params.speed, duration };
     const delta = duration - oldDuration;
     const clips = state.clips.map((c) => {

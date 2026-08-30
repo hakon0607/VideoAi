@@ -14,6 +14,12 @@ export interface ShortcutHandlers {
   onZoom: (direction: 1 | -1) => void;
   onToggleSelectTool: () => void;
   onEscape: () => void;
+  onMarker: () => void;
+  onRippleDelete: () => void;
+  onSelectAll: () => void;
+  onJumpEdge: (direction: -1 | 1) => void;
+  onGoToStart: () => void;
+  onGoToEnd: () => void;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -47,6 +53,16 @@ export function useShortcuts(handlers: ShortcutHandlers, enabled = true): void {
       if (mod && event.key.toLowerCase() === 's') {
         event.preventDefault();
         handlers.onSave();
+        return;
+      }
+      if (mod && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        handlers.onSelectAll();
+        return;
+      }
+      if (mod && (event.key === 'Backspace' || event.key === 'Delete')) {
+        event.preventDefault();
+        handlers.onRippleDelete();
         return;
       }
       if (mod && event.key.toLowerCase() === 'd') {
@@ -85,6 +101,27 @@ export function useShortcuts(handlers: ShortcutHandlers, enabled = true): void {
         case 'V':
           handlers.onToggleSelectTool();
           break;
+        case 'm':
+        case 'M':
+          event.preventDefault();
+          handlers.onMarker();
+          break;
+        case 'Home':
+          event.preventDefault();
+          handlers.onGoToStart();
+          break;
+        case 'End':
+          event.preventDefault();
+          handlers.onGoToEnd();
+          break;
+        case 'ArrowUp':
+          event.preventDefault();
+          handlers.onJumpEdge(-1);
+          break;
+        case 'ArrowDown':
+          event.preventDefault();
+          handlers.onJumpEdge(1);
+          break;
         case 'ArrowLeft':
           event.preventDefault();
           handlers.onNudge(event.shiftKey ? -10 : -1);
@@ -115,6 +152,11 @@ export const SHORTCUT_HINTS = [
   { keys: '⌘/Ctrl + ⇧ + Z', action: 'Redo' },
   { keys: '⌘/Ctrl + S', action: 'Save' },
   { keys: '⌘/Ctrl + D', action: 'Duplicate clip' },
+  { keys: '⌘/Ctrl + A', action: 'Select every clip' },
+  { keys: '⌘/Ctrl + Delete', action: 'Ripple delete' },
+  { keys: 'M', action: 'Marker at the playhead' },
+  { keys: '↑ / ↓', action: 'Jump to the previous / next edit' },
+  { keys: 'Home / End', action: 'Jump to the start / end' },
   { keys: '← / →', action: 'Nudge one frame' },
   { keys: '⇧ + ← / →', action: 'Nudge ten frames' },
   { keys: '⌘/Ctrl + + / −', action: 'Zoom timeline' },

@@ -22,6 +22,7 @@ A user trimming a clip and the assistant trimming a clip produce the identical
 `trim_clip` command, validated by the identical schema, applied by the identical
 reducer. There is no "AI mode" that shadows the editor.
 
+
 ## The command engine
 
 `lib/editor/actions/` holds ~50 action definitions. Each one is:
@@ -53,6 +54,31 @@ server-side and still hand the browser a command list rather than a new state.
 **Actions compose.** `applyActions` runs a list and bumps the revision once.
 Nothing is committed unless the whole list succeeds — an AI request either lands
 completely or not at all.
+
+## The integrity check
+
+Every action returns a new `EditorState`, and `applyAction` runs
+`assertIntegrity` on it before accepting the result. It checks only what the
+rest of the system genuinely depends on:
+
+* no two tracks, clips, assets, effects, keyframes, markers or folders share an
+  id — the database's primary keys would reject the save
+* every clip sits on a track that exists and can hold that kind of clip
+* starts, durations, speeds, volumes, keyframe values and effect parameters are
+  finite, and no clip is shorter than a frame
+* no folder is inside itself
+
+A violation throws `invalid_parameters`, which rejects the action and — inside a
+batch — the whole transaction. That matters because the parameters often come
+from a language model: an id that looks plausible may already be in use, and a
+duration that looks reasonable may round to nothing. Seventy action
+implementations cannot each be trusted to think of that; one post-condition can.
+
+The same check is what makes the fuzz suite meaningful. `tests/fuzz.test.ts`
+throws tens of thousands of schema-valid but semantically silly actions at the
+registry; anything that gets past the schema and still breaks an invariant is a
+bug in an action, and the test names the action and the seed.
+
 
 ## Undo and redo
 
@@ -112,6 +138,29 @@ Everything cheap happens in the browser, once, at upload time:
 Only transcription costs money, and it is the user's explicit choice. The
 silence map is what makes "remove all the pauses" work with no AI call at all —
 the assistant just reads `find_silences` and issues one `remove_ranges`.
+
+## Placing clips
+
+Dropping something where another clip already sits would hide it. So every
+action that positions a clip — `create_clip`, `move_clip`, `duplicate_clip`,
+`add_text`, `add_captions`, `add_sticker`, `add_sound_effect`, `detach_audio` —
+runs through `lib/editor/placement.ts` first: if the requested span on the
+requested track is occupied, the engine walks the other compatible tracks and,
+if they are all busy, adds a new layer. Because this lives in the actions rather
+than in the drop handler, it applies equally to a drag from the media panel, a
+click on "Add to timeline", and anything the assistant does.
+
+There is no opt-out. A clip hidden behind another one is never what anyone
+meant, and the one escape hatch that used to exist was only ever reached by
+accident.
+
+Growing a clip is bounded by the same rule: `trim_clip` and `set_clip_speed`
+clamp at the neighbour rather than sliding under it, and a speed change with no
+room to grow is refused with an error that says so.
+
+Locked clips — and clips on a locked track — are immovable. A ripple edit
+settles the clips it moves around them (`settleAfterRipple`) instead of stacking
+them underneath.
 
 ## Trust boundaries
 

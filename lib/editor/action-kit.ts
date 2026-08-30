@@ -77,7 +77,37 @@ export function requireUnlockedClip(state: EditorState, clipId: UUID): Clip {
   if (clip.locked) {
     throw new EditorError('clip_locked', `Clip "${clip.name}" is locked and cannot be modified.`, { clipId });
   }
+  // Locking a track has to protect what is on it, or the padlock means nothing.
+  const track = state.tracks.find((t) => t.id === clip.trackId);
+  if (track?.locked) {
+    throw new EditorError('track_locked', `Track "${track.name}" is locked, so "${clip.name}" cannot be changed.`, {
+      clipId,
+      trackId: track.id,
+    });
+  }
   return clip;
+}
+
+/**
+ * Ids for objects an action is about to create.
+ *
+ * `prepare` normally generates these so the same action replays identically on
+ * another machine. A caller may supply them, but a list of the wrong length
+ * would leave objects without an id, so anything that does not match is
+ * regenerated rather than trusted.
+ */
+export function idsFor(supplied: unknown, count: number, ctx: ActionContext): string[] {
+  const usable =
+    Array.isArray(supplied) &&
+    supplied.length === count &&
+    supplied.every((id) => typeof id === 'string' && id.length > 0);
+  return usable ? (supplied as string[]) : Array.from({ length: count }, () => ctx.newId());
+}
+
+/** True when either the clip or the track it sits on is locked. */
+export function isClipLocked(state: EditorState, clip: Clip): boolean {
+  if (clip.locked) return true;
+  return state.tracks.find((t) => t.id === clip.trackId)?.locked === true;
 }
 
 export function requireTrack(state: EditorState, trackId: UUID): Track {
@@ -136,9 +166,17 @@ export function updateTrack(state: EditorState, trackId: UUID, updater: (track: 
 /* Shared schema fragments                                                    */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Every id in the project is a uuid, because every id column in Postgres is a
+ * uuid. Accepting "clip-3" here would only push the failure down to the save,
+ * where it turns into an invalid-input-syntax error the user cannot act on.
+ */
 export const uuidLike = z
   .string()
-  .min(1)
+  .regex(
+    /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+    'Ids are uuids taken from the project state — never invent one.',
+  )
   .describe('An id that already exists in the project state. Never invent one.');
 
 export const seconds = z.number().finite().min(0);

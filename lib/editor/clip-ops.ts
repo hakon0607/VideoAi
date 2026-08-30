@@ -102,6 +102,46 @@ export function subtractRange(clip: Clip, start: number, end: number, newId: () 
   return [left, right];
 }
 
+/**
+ * Cleans up after a ripple.
+ *
+ * Sliding clips backwards can push them into a locked clip, which no longer
+ * moves out of the way — the result would be one clip hidden behind another.
+ * This walks each track in order and nudges movable clips forward just enough
+ * to sit clear of the immovable ones and of each other.
+ */
+export function settleAfterRipple(clips: Clip[], isImmovable: (clip: Clip) => boolean): Clip[] {
+  const byTrack = new Map<string, Clip[]>();
+  for (const clip of clips) {
+    const list = byTrack.get(clip.trackId);
+    if (list) list.push(clip);
+    else byTrack.set(clip.trackId, [clip]);
+  }
+
+  const moved = new Map<string, number>();
+  for (const list of byTrack.values()) {
+    const blockers = list.filter(isImmovable).sort((a, b) => a.start - b.start);
+    if (blockers.length === 0) continue;
+
+    const movable = list.filter((c) => !isImmovable(c)).sort((a, b) => a.start - b.start);
+    let cursor = 0;
+    for (const clip of movable) {
+      let start = Math.max(clip.start, cursor);
+      // Step over every blocker this clip would land on top of.
+      for (let guard = 0; guard < blockers.length + 1; guard += 1) {
+        const hit = blockers.find((b) => start < clipEnd(b) - 0.001 && start + clip.duration > b.start + 0.001);
+        if (!hit) break;
+        start = clipEnd(hit);
+      }
+      if (start !== clip.start) moved.set(clip.id, q(start));
+      cursor = start + clip.duration;
+    }
+  }
+
+  if (moved.size === 0) return clips;
+  return clips.map((clip) => (moved.has(clip.id) ? { ...clip, start: moved.get(clip.id) as number } : clip));
+}
+
 /** Shifts a clip along the timeline, clamping at zero. */
 export function shiftClip(clip: Clip, delta: number): Clip {
   return { ...clip, start: q(Math.max(0, clip.start + delta)) };

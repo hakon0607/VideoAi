@@ -3,6 +3,7 @@ import type { Clip, TextClip, TextStyle } from '@/types/editor';
 import { TEXT_ALIGNS, TEXT_ANIMATIONS, isTextClip } from '@/types/editor';
 import {
   defineAction,
+  idsFor,
   requireTrack,
   requireUnlockedClip,
   updateClip,
@@ -11,6 +12,7 @@ import {
   type AnyActionDef,
 } from '../action-kit';
 import { baseClipFields, captionTextStyle, defaultTextStyle } from '../defaults';
+import { placeClip } from '../placement';
 import { EditorError } from '../errors';
 import { q } from '../time';
 
@@ -58,8 +60,13 @@ const addText = defineAction({
     style: textStyleSchema.optional(),
     x: z.number().min(-2).max(2).optional(),
     y: z.number().min(-2).max(2).optional(),
+    newTrackId: uuidLike.optional(),
   }),
-  prepare: (params, ctx) => ({ ...params, clipId: params.clipId ?? ctx.newId() }),
+  prepare: (params, ctx) => ({
+    ...params,
+    clipId: params.clipId ?? ctx.newId(),
+    newTrackId: params.newTrackId ?? ctx.newId(),
+  }),
   apply: (state, params) => {
     const track = requireTrack(state, params.trackId);
     if (track.kind !== 'text' && track.kind !== 'overlay') {
@@ -68,11 +75,17 @@ const addText = defineAction({
         trackKind: track.kind,
       });
     }
+    const start = q(params.start);
+    const duration = q(params.duration);
+    // Text moves to a free lane, adding one if needed, rather than covering
+    // text that is already on screen at that moment.
+    const placement = placeClip(state, track, 'text', start, start + duration, params.newTrackId as string);
+
     const base = baseClipFields(
       params.clipId as string,
-      track.id,
-      q(params.start),
-      q(params.duration),
+      placement.trackId,
+      start,
+      duration,
       params.text.slice(0, 40),
     );
     const clip: TextClip = {
@@ -83,8 +96,11 @@ const addText = defineAction({
       animation: params.animation,
       transform: { ...base.transform, x: params.x ?? 0, y: params.y ?? 0 },
     };
+    const next = placement.createdTrack
+      ? { ...state, tracks: [...state.tracks, placement.createdTrack] }
+      : state;
     return {
-      state: withClips(state, [...state.clips, clip]),
+      state: withClips(next, [...next.clips, clip]),
       description: `Added text "${params.text.slice(0, 40)}"`,
     };
   },
@@ -162,11 +178,15 @@ const addCaptions = defineAction({
     /** Vertical position; 0.35 sits in the lower third, 0 is dead centre. */
     y: z.number().min(-1).max(1).default(0.33),
     clipIds: z.array(uuidLike).optional(),
+    newTrackIds: z.array(uuidLike).optional(),
   }),
   prepare: (params, ctx) => ({
     ...params,
     groupId: params.groupId ?? ctx.newId(),
-    clipIds: params.clipIds ?? params.lines.map(() => ctx.newId()),
+    clipIds: idsFor(params.clipIds, params.lines.length, ctx),
+    // A small pool of ids for lanes the batch may have to create; unused ones
+    // cost nothing and keep the action replayable on another machine.
+    newTrackIds: idsFor(params.newTrackIds, 8, ctx),
   }),
   apply: (state, params) => {
     const track = requireTrack(state, params.trackId);
@@ -175,10 +195,30 @@ const addCaptions = defineAction({
     }
     const style = params.style ? mergeStyle(captionTextStyle(), params.style) : captionTextStyle();
     const ids = params.clipIds as string[];
-    const clips: Clip[] = params.lines.map((line, i) => {
+    const lanePool = params.newTrackIds as string[];
+
+    // Captions land beside whatever is already on the track rather than on top
+    // of it — a title in the same seconds must stay visible.
+    let working = state;
+    let laneIndex = 0;
+    const clips: Clip[] = [];
+    params.lines.forEach((line, i) => {
+      const start = q(line.start);
       const duration = Math.max(0.1, q(line.end - line.start));
-      const base = baseClipFields(ids[i], track.id, q(line.start), duration, line.text.slice(0, 30));
-      return {
+      if (laneIndex >= lanePool.length) {
+        throw new EditorError(
+          'limit_exceeded',
+          'These caption lines overlap in too many layers. Split them into separate calls, or check the timings.',
+          { lines: params.lines.length },
+        );
+      }
+      const placement = placeClip(working, track, 'text', start, start + duration, lanePool[laneIndex]);
+      if (placement.createdTrack) {
+        working = { ...working, tracks: [...working.tracks, placement.createdTrack] };
+        laneIndex += 1;
+      }
+      const base = baseClipFields(ids[i], placement.trackId, start, duration, line.text.slice(0, 30));
+      const clip: Clip = {
         ...base,
         kind: 'text' as const,
         text: line.text,
@@ -188,9 +228,12 @@ const addCaptions = defineAction({
         groupId: params.groupId as string,
         transform: { ...base.transform, y: params.y },
       };
+      clips.push(clip);
+      working = { ...working, clips: [...working.clips, clip] };
     });
+
     return {
-      state: withClips(state, [...state.clips, ...clips]),
+      state: withClips(working, working.clips),
       description: `Added ${clips.length} caption lines`,
     };
   },

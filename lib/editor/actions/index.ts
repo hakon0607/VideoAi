@@ -2,9 +2,11 @@ import type { AnyActionDef } from '../action-kit';
 import { audioActions } from './audio';
 import { clipActions } from './clips';
 import { effectActions } from './effects';
+import { enhanceActions } from './enhance';
 import { keyframeActions } from './keyframes';
 import { mediaActions } from './media';
 import { projectActions } from './project';
+import { sfxActions } from './sfx';
 import { textActions } from './text';
 import { trackActions } from './tracks';
 
@@ -21,7 +23,9 @@ export const ALL_ACTIONS: AnyActionDef[] = [
   ...clipActions,
   ...textActions,
   ...audioActions,
+  ...sfxActions,
   ...effectActions,
+  ...enhanceActions,
   ...keyframeActions,
   ...mediaActions,
 ];

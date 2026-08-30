@@ -1,5 +1,6 @@
 import type {
   AspectRatio,
+  AudioProcessing,
   Clip,
   EditorState,
   Effect,
@@ -102,6 +103,10 @@ export function resolutionForAspect(aspect: AspectRatio, currentHeight: number):
   return { width: best.width, height: best.height };
 }
 
+export function defaultAudioProcessing(): AudioProcessing {
+  return { filter: 'none', compression: 0, gainDb: 0, duckUnderTrackIds: [], duckAmount: 0.7 };
+}
+
 export function defaultTransform(): Transform {
   return { x: 0, y: 0, scale: 1, rotation: 0, flipH: false, flipV: false };
 }
@@ -140,32 +145,78 @@ export function captionTextStyle(): TextStyle {
   };
 }
 
-/** Neutral parameter set per effect type. Values are the identity/no-op point. */
+/**
+ * Sensible starting values per effect. These are the values you get when you
+ * add an effect without saying how much — so they are a visible-but-tasteful
+ * amount rather than a no-op.
+ */
 export const EFFECT_DEFAULTS: Record<EffectType, Record<string, number>> = {
-  blur: { radius: 4 },
   brightness: { amount: 1.1 },
   contrast: { amount: 1.15 },
   saturation: { amount: 1.25 },
+  exposure: { stops: 0.3 },
+  temperature: { amount: 0.3 },
+  tint: { amount: 0.2 },
+  hue_rotate: { degrees: 30 },
   grayscale: { amount: 1 },
   sepia: { amount: 1 },
-  hue_rotate: { degrees: 30 },
   invert: { amount: 1 },
-  vignette: { amount: 0.4, softness: 0.6 },
+  blur: { radius: 4 },
   sharpen: { amount: 0.6 },
+  pixelate: { size: 12 },
+  film_grain: { amount: 0.25, size: 1.5 },
+  chromatic_aberration: { amount: 3 },
+  vignette: { amount: 0.4, softness: 0.6 },
+  glow: { amount: 0.35, radius: 12 },
+  mirror: { axis: 0 },
+  shake: { amount: 0.012, speed: 9 },
 };
 
 /** Allowed numeric ranges, enforced by the action schemas. */
 export const EFFECT_RANGES: Record<EffectType, Record<string, [number, number]>> = {
-  blur: { radius: [0, 100] },
   brightness: { amount: [0, 4] },
   contrast: { amount: [0, 4] },
   saturation: { amount: [0, 4] },
+  exposure: { stops: [-4, 4] },
+  temperature: { amount: [-1, 1] },
+  tint: { amount: [-1, 1] },
+  hue_rotate: { degrees: [-360, 360] },
   grayscale: { amount: [0, 1] },
   sepia: { amount: [0, 1] },
-  hue_rotate: { degrees: [-360, 360] },
   invert: { amount: [0, 1] },
-  vignette: { amount: [0, 1], softness: [0.05, 1] },
+  blur: { radius: [0, 100] },
   sharpen: { amount: [0, 2] },
+  pixelate: { size: [2, 120] },
+  film_grain: { amount: [0, 1], size: [0.5, 6] },
+  chromatic_aberration: { amount: [0, 30] },
+  vignette: { amount: [0, 1], softness: [0.05, 1] },
+  glow: { amount: [0, 1], radius: [1, 60] },
+  /** axis: 0 mirrors left-to-right, 1 mirrors top-to-bottom. */
+  mirror: { axis: [0, 1] },
+  shake: { amount: [0, 0.1], speed: [0.5, 30] },
+};
+
+/** What each effect does, in one line, for the panel and for the model. */
+export const EFFECT_DESCRIPTIONS: Record<EffectType, string> = {
+  brightness: 'Lift or crush the exposure',
+  contrast: 'Deepen the blacks',
+  saturation: 'Richer or flatter colour',
+  exposure: 'Exposure in stops, like a camera',
+  temperature: 'Warmer or cooler white balance',
+  tint: 'Green to magenta',
+  hue_rotate: 'Shift every hue',
+  grayscale: 'Remove all colour',
+  sepia: 'Warm vintage tint',
+  invert: 'Invert the colours',
+  blur: 'Soften the image',
+  sharpen: 'Crisper detail',
+  pixelate: 'Blocky censor look',
+  film_grain: 'Analogue grain',
+  chromatic_aberration: 'Split the colour channels',
+  vignette: 'Darken the edges',
+  glow: 'Bloom on the highlights',
+  mirror: 'Flip one half onto the other',
+  shake: 'Handheld camera movement',
 };
 
 export const TRANSITION_DEFAULT_DURATION = 0.5;
@@ -229,13 +280,17 @@ export function emptyState(projectId: string, timelineId: string, name: string, 
     name,
     settings: defaultSettings(),
     tracks: [
-      defaultTrack(trackIds[0], 'video', 0),
-      defaultTrack(trackIds[1], 'audio', 1),
-      defaultTrack(trackIds[2], 'text', 2),
+      // Names count within a kind, not across the stack, so a second audio
+      // track is "Audio 2" and never collides with "Text 2".
+      defaultTrack(trackIds[0], 'video', 0, 'Video 1'),
+      defaultTrack(trackIds[1], 'audio', 1, 'Audio 1'),
+      defaultTrack(trackIds[2], 'text', 2, 'Text 1'),
     ],
     clips: [],
     assets: [],
     analysis: {},
+    markers: [],
+    folders: [],
     revision: 0,
   };
 }

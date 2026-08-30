@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createServerSupabase } from '@/lib/supabase/server';
 import { PROJECT_PRESETS } from '@/lib/editor/defaults';
+import { parseStoragePaths, removePaths, removePrefix } from '@/lib/storage/cleanup';
 
 export interface ActionResult {
   ok: boolean;
@@ -62,30 +63,52 @@ export async function duplicateProjectAction(projectId: string): Promise<ActionR
 export async function deleteProjectAction(projectId: string): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
 
-  // Remove the stored media first; the database rows cascade from the project.
-  const { data: assets } = await supabase
-    .from('media_assets')
-    .select('storage_path')
-    .eq('project_id', projectId);
+  // Ask the database which objects only this project references, before the
+  // rows disappear. Files shared with a duplicated project are left alone.
+  const { data: pathData } = await supabase.rpc('project_storage_paths', { p_project_id: projectId });
+  const paths = parseStoragePaths(pathData);
 
   const { error } = await supabase.from('projects').delete().eq('id', projectId);
   if (error) return { ok: false, error: error.message };
 
-  if (assets?.length) {
-    // A duplicated project shares storage objects, so only delete files that no
-    // surviving asset row still points at.
-    const paths = assets.map((a) => a.storage_path);
-    const { data: stillUsed } = await supabase
-      .from('media_assets')
-      .select('storage_path')
-      .in('storage_path', paths);
-    const used = new Set((stillUsed ?? []).map((a) => a.storage_path));
-    const orphaned = paths.filter((p) => !used.has(p) && p.startsWith(`user/${user.id}/`));
-    if (orphaned.length) await supabase.storage.from('media').remove(orphaned);
+  // Then clear the bucket. The folder walk catches anything the rows missed —
+  // an interrupted upload, a thumbnail, a stale export.
+  try {
+    await removePaths(supabase, 'media', paths.mediaPaths);
+    await removePaths(supabase, 'exports', paths.exportPaths);
+    await removePrefix(supabase, 'media', `user/${user.id}/projects/${projectId}`);
+    await removePrefix(supabase, 'exports', `user/${user.id}/projects/${projectId}`);
+  } catch {
+    // The project is already gone; a storage hiccup must not fail the delete.
+    // Anything left behind shows up under Storage in the admin panel.
   }
 
   revalidatePath('/dashboard');
   revalidatePath('/projects');
+  return { ok: true };
+}
+
+/** Deletes one media asset and the file behind it, if nothing else uses it. */
+export async function deleteAssetAction(assetId: string): Promise<ActionResult> {
+  const { supabase } = await requireUser();
+
+  const { data: asset } = await supabase
+    .from('media_assets')
+    .select('storage_path, project_id')
+    .eq('id', assetId)
+    .maybeSingle();
+  if (!asset) return { ok: false, error: 'That media file no longer exists.' };
+
+  const { error } = await supabase.from('media_assets').delete().eq('id', assetId);
+  if (error) return { ok: false, error: error.message };
+
+  // Only delete the object when no surviving row points at it.
+  const { count } = await supabase
+    .from('media_assets')
+    .select('id', { count: 'exact', head: true })
+    .eq('storage_path', asset.storage_path);
+
+  if (!count) await removePaths(supabase, 'media', [asset.storage_path]);
   return { ok: true };
 }
 

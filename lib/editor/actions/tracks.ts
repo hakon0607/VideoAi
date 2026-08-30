@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TRACK_KINDS } from '@/types/editor';
 import { defineAction, requireTrack, updateTrack, uuidLike, type AnyActionDef } from '../action-kit';
-import { defaultTrack } from '../defaults';
+import { defaultTrack, defaultTrackName } from '../defaults';
 import { EditorError } from '../errors';
 
 const createTrack = defineAction({
@@ -26,7 +26,13 @@ const createTrack = defineAction({
     }
     const index = params.index ?? state.tracks.length;
     const shifted = state.tracks.map((t) => (t.index >= index ? { ...t, index: t.index + 1 } : t));
-    const track = defaultTrack(trackId, params.kind, index, params.name);
+    const sameKind = state.tracks.filter((t) => t.kind === params.kind).length;
+    const track = defaultTrack(
+      trackId,
+      params.kind,
+      index,
+      params.name ?? defaultTrackName(params.kind, sameKind),
+    );
     return {
       state: { ...state, tracks: [...shifted, track] },
       description: `Added ${params.kind} track "${track.name}"`,

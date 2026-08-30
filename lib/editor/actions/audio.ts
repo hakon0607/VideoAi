@@ -3,6 +3,7 @@ import type { MediaClip } from '@/types/editor';
 import { isMediaClip } from '@/types/editor';
 import { defineAction, requireUnlockedClip, updateClip, uuidLike, type AnyActionDef } from '../action-kit';
 import { EditorError } from '../errors';
+import { placeClip } from '../placement';
 
 function asAudible(state: Parameters<typeof requireUnlockedClip>[0], clipId: string): MediaClip {
   const clip = requireUnlockedClip(state, clipId);
@@ -86,8 +87,17 @@ const detachAudio = defineAction({
   category: 'audio',
   summary:
     'Split the audio of a video clip onto an audio track as its own clip, so it can be trimmed or levelled independently. The video clip is muted afterwards.',
-  schema: z.object({ clipId: uuidLike, trackId: uuidLike, newClipId: uuidLike.optional() }),
-  prepare: (params, ctx) => ({ ...params, newClipId: params.newClipId ?? ctx.newId() }),
+  schema: z.object({
+    clipId: uuidLike,
+    trackId: uuidLike,
+    newClipId: uuidLike.optional(),
+    newTrackId: uuidLike.optional(),
+  }),
+  prepare: (params, ctx) => ({
+    ...params,
+    newClipId: params.newClipId ?? ctx.newId(),
+    newTrackId: params.newTrackId ?? ctx.newId(),
+  }),
   apply: (state, params) => {
     const clip = asAudible(state, params.clipId);
     if (clip.kind !== 'video') throw new EditorError('invalid_parameters', 'Only video clips carry detachable audio.');
@@ -95,11 +105,21 @@ const detachAudio = defineAction({
     if (!track || track.kind !== 'audio') {
       throw new EditorError('incompatible_track', 'Detached audio needs an audio track.', { trackId: params.trackId });
     }
+    // The detached audio must not land underneath something already on that
+    // track, so it takes the next free lane when the spot is taken.
+    const placement = placeClip(
+      state,
+      track,
+      'audio',
+      clip.start,
+      clip.start + clip.duration,
+      params.newTrackId as string,
+    );
     const audioClip: MediaClip = {
       ...structuredClone(clip),
       id: params.newClipId as string,
       kind: 'audio',
-      trackId: track.id,
+      trackId: placement.trackId,
       name: `${clip.name} (audio)`,
       transform: { x: 0, y: 0, scale: 1, rotation: 0, flipH: false, flipV: false },
       effects: [],
@@ -108,8 +128,9 @@ const detachAudio = defineAction({
       muted: false,
     };
     const clips = state.clips.map((c) => (c.id === clip.id ? { ...(c as MediaClip), muted: true } : c));
+    const tracks = placement.createdTrack ? [...state.tracks, placement.createdTrack] : state.tracks;
     return {
-      state: { ...state, clips: [...clips, audioClip] },
+      state: { ...state, tracks, clips: [...clips, audioClip] },
       description: `Detached audio from "${clip.name}"`,
     };
   },

@@ -6,7 +6,9 @@ import {
   assetFromRow,
   clipFromRow,
   effectFromRow,
+  folderFromRow,
   keyframeFromRow,
+  markerFromRow,
   trackFromRow,
 } from '@/lib/editor/serialize';
 
@@ -47,8 +49,17 @@ export async function loadEditorProject(projectId: string): Promise<EditorBootst
     .maybeSingle();
   if (!timeline) return null;
 
-  const [tracksRes, clipsRes, effectsRes, keyframesRes, assetsRes, analysisRes, conversationRes] =
-    await Promise.all([
+  const [
+    tracksRes,
+    clipsRes,
+    effectsRes,
+    keyframesRes,
+    assetsRes,
+    analysisRes,
+    conversationRes,
+    foldersRes,
+    markersRes,
+  ] = await Promise.all([
       supabase.from('tracks').select('*').eq('timeline_id', timeline.id).order('layer_index'),
       supabase.from('clips').select('*').eq('timeline_id', timeline.id).order('start_time'),
       supabase.from('effects').select('*').eq('project_id', projectId).order('order_index'),
@@ -63,6 +74,8 @@ export async function loadEditorProject(projectId: string): Promise<EditorBootst
         .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase.from('media_folders').select('*').eq('project_id', projectId).order('name'),
+      supabase.from('markers').select('*').eq('timeline_id', timeline.id).order('time_seconds'),
     ]);
 
   const effectsByClip = new Map<string, Effect[]>();
@@ -87,6 +100,9 @@ export async function loadEditorProject(projectId: string): Promise<EditorBootst
 
   const analysis: Record<string, MediaAnalysis> = {};
   for (const row of analysisRes.data ?? []) analysis[row.asset_id] = analysisFromRow(row);
+
+  const folders = (foldersRes.data ?? []).map(folderFromRow);
+  const markers = (markersRes.data ?? []).map(markerFromRow);
 
   const mediaUrls: Record<string, string> = {};
   if (assets.length) {
@@ -135,6 +151,8 @@ export async function loadEditorProject(projectId: string): Promise<EditorBootst
     clips,
     assets,
     analysis,
+    markers,
+    folders,
     revision: Number(timeline.revision ?? 0),
   };
 

@@ -47,6 +47,10 @@ interface EditorStore {
   playing: boolean;
   /** Timeline zoom, in pixels per second. */
   pixelsPerSecond: number;
+  /** Preview playback speed. A viewing convenience; never part of the project. */
+  previewRate: number;
+  /** Smallest useful zoom, published by the timeline from its own width. */
+  zoomFloor: number;
   saveStatus: SaveStatus;
   saveError: string | null;
   lastSavedAt: string | null;
@@ -67,6 +71,8 @@ interface EditorStore {
   setPlayhead: (time: number) => void;
   setPlaying: (playing: boolean) => void;
   setPixelsPerSecond: (value: number) => void;
+  setZoomFloor: (value: number) => void;
+  setPreviewRate: (value: number) => void;
   setAiBusy: (busy: boolean) => void;
 
   registerAsset: (asset: MediaAsset) => void;
@@ -94,6 +100,8 @@ const EMPTY_STATE: EditorState = {
   clips: [],
   assets: [],
   analysis: {},
+  markers: [],
+  folders: [],
   revision: 0,
 };
 
@@ -104,6 +112,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   playhead: 0,
   playing: false,
   pixelsPerSecond: 60,
+  previewRate: 1,
+  zoomFloor: 0.05,
   saveStatus: 'idle',
   saveError: null,
   lastSavedAt: null,
@@ -220,7 +230,18 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     set({ playhead: Math.max(0, Math.min(time, Math.max(duration, 0.001))) });
   },
   setPlaying: (playing) => set({ playing }),
-  setPixelsPerSecond: (value) => set({ pixelsPerSecond: Math.max(4, Math.min(600, value)) }),
+  // The lower bound has to be small enough that a two-hour timeline can be
+  // fitted on screen — the timeline publishes the exact floor for its own
+  // width, so zooming out never produces an empty ruler. The upper bound is
+  // frame-level detail.
+  setPixelsPerSecond: (value) =>
+    set((store) => ({ pixelsPerSecond: Math.max(store.zoomFloor, Math.min(600, value)) })),
+  setZoomFloor: (value) =>
+    set((store) => {
+      const zoomFloor = Math.max(0.02, Math.min(60, value));
+      return { zoomFloor, pixelsPerSecond: Math.max(zoomFloor, store.pixelsPerSecond) };
+    }),
+  setPreviewRate: (value) => set({ previewRate: Math.max(0.1, Math.min(4, value)) }),
   setAiBusy: (aiBusy) => set({ aiBusy }),
 
   registerAsset: (asset) =>

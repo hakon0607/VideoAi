@@ -1,6 +1,9 @@
 import type {
+  AudioProcessing,
   Clip,
   EditorState,
+  Marker,
+  MediaFolder,
   Effect,
   Keyframe,
   MediaAnalysis,
@@ -12,7 +15,7 @@ import type {
   Transition,
 } from '@/types/editor';
 import type { Json, Tables } from '@/types/database';
-import { defaultTextStyle, defaultTransform } from './defaults';
+import { defaultAudioProcessing, defaultTextStyle, defaultTransform } from './defaults';
 import { timelineDuration } from './selectors';
 
 /* -------------------------------------------------------------------------- */
@@ -66,6 +69,7 @@ export function assetFromRow(row: Tables<'media_assets'>): MediaAsset {
   return {
     id: row.id,
     projectId: row.project_id,
+    folderId: row.folder_id ?? null,
     kind: row.kind as MediaAsset['kind'],
     name: row.name,
     storagePath: row.storage_path,
@@ -153,6 +157,7 @@ export function clipFromRow(
         }
       : null,
     freeze: row.freeze_frame,
+    audio: { ...defaultAudioProcessing(), ...(asRecord(row.audio_processing) as Partial<AudioProcessing>) },
   };
   return clip;
 }
@@ -176,6 +181,14 @@ export function keyframeFromRow(row: Tables<'keyframes'>): Keyframe {
   };
 }
 
+export function folderFromRow(row: Tables<'media_folders'>): MediaFolder {
+  return { id: row.id, name: row.name, parentId: row.parent_id, createdAt: row.created_at };
+}
+
+export function markerFromRow(row: Tables<'markers'>): Marker {
+  return { id: row.id, time: Number(row.time_seconds), label: row.label, color: row.color };
+}
+
 /* -------------------------------------------------------------------------- */
 /* Editor state -> save_timeline payload                                      */
 /* -------------------------------------------------------------------------- */
@@ -189,6 +202,10 @@ export interface SavePayload {
   settings: EditorState['settings'];
   tracks: unknown[];
   clips: unknown[];
+  markers: unknown[];
+  folders: unknown[];
+  /** assetId -> folderId, so dragging a file into a bin survives a reload. */
+  assetFolders: { assetId: string; folderId: string | null }[];
 }
 
 /** Serialises the whole timeline for the atomic save_timeline RPC. */
@@ -200,6 +217,9 @@ export function toSavePayload(state: EditorState, thumbnailPath?: string | null)
     duration: timelineDuration(state),
     thumbnailPath: thumbnailPath ?? null,
     settings: state.settings,
+    markers: state.markers.map((m) => ({ id: m.id, time: m.time, label: m.label, color: m.color })),
+    folders: state.folders.map((f) => ({ id: f.id, name: f.name, parentId: f.parentId })),
+    assetFolders: state.assets.map((a) => ({ assetId: a.id, folderId: a.folderId ?? null })),
     tracks: state.tracks.map((t) => ({
       id: t.id,
       kind: t.kind,
@@ -245,6 +265,7 @@ export function toSavePayload(state: EditorState, thumbnailPath?: string | null)
         fadeIn: media.fadeIn,
         fadeOut: media.fadeOut,
         crop: media.crop,
+        audio: media.audio,
       };
     }),
   };
