@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutGrid, Film, Sparkles, Settings } from 'lucide-react';
+import { LayoutGrid, Film, Sparkles, Settings, Shield } from 'lucide-react';
 import { useT } from '@/lib/i18n/context';
 import { cn } from '@/lib/utils/cn';
 
@@ -13,7 +13,7 @@ const ITEMS = [
   { href: '/settings', icon: Settings, key: 'dashboard.nav.settings' },
 ] as const;
 
-export function Sidebar() {
+export function Sidebar({ isAdmin = false }: { isAdmin?: boolean }) {
   const pathname = usePathname();
   const t = useT();
 
@@ -39,6 +39,21 @@ export function Sidebar() {
           </Link>
         );
       })}
+
+      {isAdmin && (
+        <Link
+          href="/admin"
+          className={cn(
+            'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-colors',
+            pathname.startsWith('/admin')
+              ? 'bg-accent-soft font-medium text-accent'
+              : 'text-ink-muted hover:bg-elevated/60 hover:text-ink',
+          )}
+        >
+          <Shield size={15} className={pathname.startsWith('/admin') ? 'text-accent' : ''} />
+          <span>{t('admin.title')}</span>
+        </Link>
+      )}
     </nav>
   );
 }

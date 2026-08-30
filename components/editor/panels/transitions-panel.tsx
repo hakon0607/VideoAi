@@ -4,16 +4,7 @@ import { TRANSITION_TYPES } from '@/types/editor';
 import { useEditorStore } from '@/lib/editor/store';
 import { useI18n } from '@/lib/i18n/context';
 import { clipsAreAdjacent, clipsOnTrack } from '@/lib/editor/selectors';
-
-const DESCRIPTIONS: Record<string, string> = {
-  cut: 'A hard cut, no blend',
-  fade: 'Through the background colour',
-  crossfade: 'Blend the two shots',
-  dissolve: 'A softer crossfade',
-  slide: 'Push one shot off screen',
-  zoom: 'Scale into the next shot',
-  wipe: 'Reveal with a moving edge',
-};
+import type { DictionaryKey } from '@/lib/i18n/dictionaries';
 
 export function TransitionsPanel() {
   const { t } = useI18n();
@@ -35,8 +26,8 @@ export function TransitionsPanel() {
         <>
           <p className="mb-3 text-[11.5px] leading-relaxed text-ink-muted">
             {adjacent
-              ? `Applies between "${clip.name}" and "${next?.name}".`
-              : `Applies to the end of "${clip.name}".`}
+              ? t('editor.transitionBetween', { a: clip.name, b: next?.name ?? '' })
+              : t('editor.transitionAtEnd', { a: clip.name })}
           </p>
           <div className="space-y-1.5">
             {TRANSITION_TYPES.map((type) => (
@@ -60,8 +51,10 @@ export function TransitionsPanel() {
                 }
                 className="w-full rounded-md border border-line bg-base px-3 py-2 text-left transition-colors hover:border-line-strong hover:bg-elevated"
               >
-                <span className="block text-[12px] text-ink capitalize">{type}</span>
-                <span className="mt-0.5 block text-[10.5px] text-ink-faint">{DESCRIPTIONS[type]}</span>
+                <span className="block text-[12px] text-ink">{t(`transition.${type}` as DictionaryKey)}</span>
+                <span className="mt-0.5 block text-[10.5px] text-ink-faint">
+                  {t(`transition.${type}.about` as DictionaryKey)}
+                </span>
               </button>
             ))}
           </div>

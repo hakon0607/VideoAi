@@ -15,6 +15,7 @@ export default async function SettingsPage() {
       username={session.profile?.username ?? ''}
       displayName={session.profile?.display_name ?? ''}
       locale={session.profile?.locale ?? 'en'}
+      isAdmin={Boolean(session.profile?.is_admin)}
     />
   );
 }

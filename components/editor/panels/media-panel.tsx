@@ -1,7 +1,22 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { Captions, Film, Image as ImageIcon, Loader2, Music, Plus, Trash2, Upload } from 'lucide-react';
+import {
+  Captions,
+  ChevronRight,
+  Film,
+  Folder,
+  FolderPlus,
+  Image as ImageIcon,
+  LayoutGrid,
+  List,
+  Loader2,
+  Music,
+  Pencil,
+  Plus,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import type { MediaAsset } from '@/types/editor';
 import { useEditorStore } from '@/lib/editor/store';
 import { useMediaUrls } from '@/lib/editor/media-urls';
@@ -10,7 +25,9 @@ import { formatBytes, formatClock } from '@/lib/utils/format';
 import { uploadMediaFile, type UploadProgress } from '@/lib/media/upload';
 import { getAssetFile, rememberFile } from '@/lib/media/file-cache';
 import { InsufficientCreditsError, transcribeAsset } from '@/lib/media/transcribe';
-import { createClient } from '@/lib/supabase/client';
+import { deleteAssetAction } from '@/lib/actions/projects';
+import { isMediaDrag, readMediaDrag, writeMediaDrag } from '@/components/editor/timeline/drag-payload';
+import { UploadTooLargeError } from '@/lib/media/resumable';
 import { Button } from '@/components/ui/button';
 import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils/cn';
@@ -24,6 +41,23 @@ interface PendingUpload {
 
 const KIND_ICON = { video: Film, audio: Music, image: ImageIcon } as const;
 
+/** Turns an upload failure into something the user can act on. */
+function describeUploadError(error: unknown, t: ReturnType<typeof useI18n>['t']): string {
+  if (error instanceof UploadTooLargeError) {
+    return t('error.storageLimit', {
+      size: formatBytes(error.fileBytes),
+      limit: formatBytes(error.limitBytes),
+    });
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.startsWith('unsupported_file')) return t('error.unsupportedFile');
+  if (message === 'storage_limit' || message.includes('exceeded the maximum')) {
+    return t('error.storageLimitUnknown');
+  }
+  if (message === 'cancelled') return t('common.cancel');
+  return message || t('error.uploadFailed');
+}
+
 export function MediaPanel({ userId }: { userId: string }) {
   const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -32,8 +66,14 @@ export function MediaPanel({ userId }: { userId: string }) {
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
   const [busyLabel, setBusyLabel] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [folderId, setFolderId] = useState<string | null>(null);
+  const [dropFolderId, setDropFolderId] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [view, setView] = useState<'list' | 'grid'>('list');
+  const [search, setSearch] = useState('');
 
-  const assets = useEditorStore((s) => s.state.assets);
+  const allAssets = useEditorStore((s) => s.state.assets);
+  const folders = useEditorStore((s) => s.state.folders);
   const analysis = useEditorStore((s) => s.state.analysis);
   const tracks = useEditorStore((s) => s.state.tracks);
   const projectId = useEditorStore((s) => s.state.projectId);
@@ -56,23 +96,24 @@ export function MediaPanel({ userId }: { userId: string }) {
           );
           rememberFile(result.asset.id, file);
           registerAsset(result.asset);
+          // Anything uploaded while a bin is open lands in that bin.
+          if (folderId) {
+            dispatch(
+              [{ type: 'move_media_to_folder', params: { assetIds: [result.asset.id], folderId } }],
+              { label: 'File media', silent: true },
+            );
+          }
           if (result.analysis) setAnalysis(result.asset.id, result.analysis);
           if (result.signedUrl) addUrl(result.asset.id, result.signedUrl);
           setPending((p) => p.filter((item) => item.id !== id));
         } catch (uploadError) {
-          const message =
-            uploadError instanceof Error ? uploadError.message : String(uploadError);
-          const friendly = message.startsWith('unsupported_file')
-            ? t('error.unsupportedFile')
-            : message === 'file_too_large'
-              ? t('error.fileTooLarge', { limit: '2 GB' })
-              : message;
+          const friendly = describeUploadError(uploadError, t);
           setPending((p) => p.map((item) => (item.id === id ? { ...item, error: friendly } : item)));
           setError(friendly);
         }
       }
     },
-    [addUrl, projectId, registerAsset, setAnalysis, t, userId],
+    [addUrl, dispatch, folderId, projectId, registerAsset, setAnalysis, t, userId],
   );
 
   const addToTimeline = useCallback(
@@ -125,15 +166,66 @@ export function MediaPanel({ userId }: { userId: string }) {
     [analysis, patchAsset, projectId, setAnalysis, t, urls],
   );
 
+  /* -------------------------------------------------------------------- */
+  /* Folders                                                               */
+  /* -------------------------------------------------------------------- */
+  const currentFolder = folders.find((f) => f.id === folderId) ?? null;
+  const childFolders = folders.filter((f) => f.parentId === folderId);
+  const needle = search.trim().toLowerCase();
+  // A search looks through the whole library; without one you see the bin
+  // you are standing in.
+  const assets = needle
+    ? allAssets.filter((a) => a.name.toLowerCase().includes(needle))
+    : allAssets.filter((a) => (a.folderId ?? null) === folderId);
+
+  const createFolder = useCallback(() => {
+    const name = window.prompt(t('editor.newFolderPrompt'), t('editor.newFolder'));
+    if (!name?.trim()) return;
+    dispatch(
+      [{ type: 'create_media_folder', params: { name: name.trim(), parentId: folderId } }],
+      { label: 'New folder' },
+    );
+  }, [dispatch, folderId, t]);
+
+  const renameFolder = useCallback(
+    (id: string, name: string) => {
+      setRenaming(null);
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      dispatch([{ type: 'rename_media_folder', params: { folderId: id, name: trimmed } }], {
+        label: 'Rename folder',
+      });
+    },
+    [dispatch],
+  );
+
+  const deleteFolder = useCallback(
+    (id: string, name: string) => {
+      if (!window.confirm(t('editor.deleteFolderConfirm', { name }))) return;
+      dispatch([{ type: 'delete_media_folder', params: { folderId: id } }], { label: 'Delete folder' });
+    },
+    [dispatch, t],
+  );
+
+  const moveToFolder = useCallback(
+    (assetIds: string[], target: string | null) => {
+      dispatch([{ type: 'move_media_to_folder', params: { assetIds, folderId: target } }], {
+        label: 'Move media',
+      });
+    },
+    [dispatch],
+  );
+
   const removeAsset = useCallback(
     async (asset: MediaAsset) => {
       if (!window.confirm(`${t('common.delete')} "${asset.name}"?`)) return;
       dispatch([{ type: 'remove_asset', params: { assetId: asset.id } }], {
         label: `Remove ${asset.name}`,
       });
-      const supabase = createClient();
-      await supabase.from('media_assets').delete().eq('id', asset.id);
-      await supabase.storage.from('media').remove([asset.storagePath]);
+      // The server action also removes the file from storage, but only when no
+      // other project still points at it.
+      const result = await deleteAssetAction(asset.id);
+      if (!result.ok && result.error) setError(result.error);
     },
     [dispatch, t],
   );
@@ -179,6 +271,66 @@ export function MediaPanel({ userId }: { userId: string }) {
         </p>
       )}
 
+      <div className="mt-2 flex shrink-0 items-center gap-1 px-3">
+        <div className="flex min-w-0 flex-1 items-center text-[11.5px] text-ink-faint">
+          <button
+            onClick={() => setFolderId(null)}
+            onDragOver={(e) => {
+              if (!isMediaDrag(e)) return;
+              e.preventDefault();
+              setDropFolderId('__root__');
+            }}
+            onDragLeave={() => setDropFolderId(null)}
+            onDrop={(e) => {
+              const payload = readMediaDrag(e);
+              setDropFolderId(null);
+              if (!payload) return;
+              e.preventDefault();
+              e.stopPropagation();
+              moveToFolder([payload.assetId], null);
+            }}
+            className={cn(
+              'shrink-0 rounded-xs px-1 py-0.5 transition-colors hover:text-ink',
+              !currentFolder && 'text-ink',
+              dropFolderId === '__root__' && 'bg-accent-soft text-accent',
+            )}
+          >
+            {t('editor.allMedia')}
+          </button>
+          {currentFolder && (
+            <>
+              <ChevronRight size={11} className="shrink-0" />
+              <span className="truncate px-1 text-ink">{currentFolder.name}</span>
+            </>
+          )}
+        </div>
+        <Tooltip label={t('editor.newFolder')} side="top">
+          <button
+            onClick={createFolder}
+            className="grid h-6 w-6 shrink-0 place-items-center rounded-sm text-ink-faint transition-colors hover:bg-elevated hover:text-ink"
+          >
+            <FolderPlus size={12} />
+          </button>
+        </Tooltip>
+        <Tooltip label={view === 'list' ? t('editor.gridView') : t('editor.listView')} side="top">
+          <button
+            onClick={() => setView((v) => (v === 'list' ? 'grid' : 'list'))}
+            className="grid h-6 w-6 shrink-0 place-items-center rounded-sm text-ink-faint transition-colors hover:bg-elevated hover:text-ink"
+          >
+            {view === 'list' ? <LayoutGrid size={12} /> : <List size={12} />}
+          </button>
+        </Tooltip>
+      </div>
+
+      <div className="mt-1.5 shrink-0 px-3">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t('editor.searchMedia')}
+          className="h-7 w-full rounded-sm border border-line bg-base px-2 text-[12px] text-ink transition-colors hover:border-line-strong focus:border-accent focus:outline-none"
+        />
+      </div>
+
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {pending.map((item) => (
           <div key={item.id} className="mb-2 rounded-md border border-line bg-base px-2.5 py-2">
@@ -204,11 +356,88 @@ export function MediaPanel({ userId }: { userId: string }) {
           </div>
         ))}
 
-        {assets.length === 0 && pending.length === 0 && (
-          <p className="mt-6 text-center text-[12px] text-ink-faint">{t('editor.noMedia')}</p>
+        {childFolders.length > 0 && !needle && (
+          <div className="mb-2 space-y-1">
+            {childFolders.map((folder) => {
+              const count = allAssets.filter((a) => a.folderId === folder.id).length;
+              return (
+                <div
+                  key={folder.id}
+                  onDoubleClick={() => setFolderId(folder.id)}
+                  onDragOver={(e) => {
+                    if (!isMediaDrag(e)) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    setDropFolderId(folder.id);
+                  }}
+                  onDragLeave={() => setDropFolderId((id) => (id === folder.id ? null : id))}
+                  onDrop={(e) => {
+                    const payload = readMediaDrag(e);
+                    setDropFolderId(null);
+                    if (!payload) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    moveToFolder([payload.assetId], folder.id);
+                  }}
+                  className={cn(
+                    'group flex items-center gap-2 rounded-md border px-2 py-1.5 transition-colors',
+                    dropFolderId === folder.id
+                      ? 'border-accent bg-accent-soft'
+                      : 'border-line bg-base hover:border-line-strong',
+                  )}
+                >
+                  <Folder size={13} className="shrink-0 text-ink-faint" />
+                  {renaming === folder.id ? (
+                    <input
+                      autoFocus
+                      defaultValue={folder.name}
+                      onBlur={(e) => renameFolder(folder.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.currentTarget.blur();
+                        if (e.key === 'Escape') setRenaming(null);
+                      }}
+                      className="min-w-0 flex-1 rounded-xs border border-accent bg-base px-1 text-[12px] text-ink focus:outline-none"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setFolderId(folder.id)}
+                      className="min-w-0 flex-1 truncate text-left text-[12px] text-ink"
+                    >
+                      {folder.name}
+                    </button>
+                  )}
+                  <span className="shrink-0 text-[10.5px] text-ink-faint">{count}</span>
+                  <button
+                    onClick={() => setRenaming(folder.id)}
+                    title={t('common.rename')}
+                    className="shrink-0 rounded-xs p-1 text-ink-faint opacity-0 transition-opacity group-hover:opacity-100 hover:text-ink"
+                  >
+                    <Pencil size={11} />
+                  </button>
+                  <button
+                    onClick={() => deleteFolder(folder.id, folder.name)}
+                    title={t('common.delete')}
+                    className="shrink-0 rounded-xs p-1 text-ink-faint opacity-0 transition-opacity group-hover:opacity-100 hover:text-danger"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         )}
 
-        <div className="space-y-1.5">
+        {assets.length === 0 && pending.length === 0 && childFolders.length === 0 && (
+          <p className="mt-6 text-center text-[12px] text-ink-faint">
+            {needle ? t('editor.noResults') : t('editor.noMedia')}
+          </p>
+        )}
+
+        {assets.length > 0 && (
+          <p className="mb-2 text-[11px] text-ink-faint">{t('editor.dragToTimeline')}</p>
+        )}
+
+        <div className={cn(view === 'grid' ? 'grid grid-cols-2 gap-1.5' : 'space-y-1.5')}>
           {assets.map((asset) => {
             const Icon = KIND_ICON[asset.kind];
             const hasTranscript = (analysis[asset.id]?.words.length ?? 0) > 0;
@@ -217,10 +446,25 @@ export function MediaPanel({ userId }: { userId: string }) {
             return (
               <div
                 key={asset.id}
-                className="group rounded-md border border-line bg-base p-2 transition-colors hover:border-line-strong"
+                draggable
+                onDragStart={(event) =>
+                  writeMediaDrag(event, {
+                    assetId: asset.id,
+                    kind: asset.kind,
+                    duration: asset.duration,
+                    name: asset.name,
+                  })
+                }
+                title={`${asset.name} — ${t('editor.dragToTimeline')}`}
+                className="group cursor-grab rounded-md border border-line bg-base p-2 transition-colors hover:border-line-strong active:cursor-grabbing"
               >
-                <div className="flex gap-2.5">
-                  <div className="relative h-11 w-16 shrink-0 overflow-hidden rounded-sm bg-elevated">
+                <div className={cn(view === 'grid' ? 'flex flex-col gap-1.5' : 'flex gap-2.5')}>
+                  <div
+                    className={cn(
+                      'relative shrink-0 overflow-hidden rounded-sm bg-elevated',
+                      view === 'grid' ? 'aspect-video w-full' : 'h-11 w-16',
+                    )}
+                  >
                     {asset.thumbnailUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={asset.thumbnailUrl} alt="" className="h-full w-full object-cover" />

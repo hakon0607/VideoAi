@@ -19,7 +19,7 @@ export function Topbar({
   onSave,
   onExport,
 }: {
-  user: { id: string; email: string; displayName: string; username: string };
+  user: { id: string; email: string; displayName: string; username: string; isAdmin: boolean };
   onSave: () => void;
   onExport: () => void;
 }) {
@@ -146,7 +146,12 @@ export function Topbar({
         <Download size={13} /> {t('editor.export')}
       </Button>
 
-      <ProfileMenu displayName={user.displayName} username={user.username} email={user.email} />
+      <ProfileMenu
+        displayName={user.displayName}
+        username={user.username}
+        email={user.email}
+        isAdmin={user.isAdmin}
+      />
 
       <Modal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} title={t('editor.shortcuts')} width="sm">
         <ul className="divide-y divide-line overflow-hidden rounded-md border border-line">

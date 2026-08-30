@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { Infinity as InfinityIcon, Shield } from 'lucide-react';
 import { useI18n } from '@/lib/i18n/context';
 import { LOCALES, LOCALE_LABELS, isLocale } from '@/lib/i18n/dictionaries';
 import { Button } from '@/components/ui/button';
@@ -15,11 +17,13 @@ export function SettingsView({
   username: initialUsername,
   displayName: initialDisplayName,
   locale: initialLocale,
+  isAdmin = false,
 }: {
   email: string;
   username: string;
   displayName: string;
   locale: string;
+  isAdmin?: boolean;
 }) {
   const { t, locale, setLocale } = useI18n();
   const router = useRouter();
@@ -49,7 +53,17 @@ export function SettingsView({
 
   return (
     <div className="mx-auto max-w-xl space-y-8">
-      <h1 className="text-[20px] font-semibold tracking-tight text-ink">{t('settings.title')}</h1>
+      <div className="flex flex-wrap items-center gap-2">
+        <h1 className="text-[20px] font-semibold tracking-tight text-ink">{t('settings.title')}</h1>
+        {isAdmin && (
+          <Link
+            href="/admin"
+            className="inline-flex items-center gap-1 rounded-sm border border-accent/40 bg-accent-soft px-2 py-0.5 text-[11.5px] font-medium text-accent transition-colors hover:bg-accent/20"
+          >
+            <Shield size={11} /> {t('admin.title')}
+          </Link>
+        )}
+      </div>
 
       <section className="rounded-lg border border-line bg-surface p-5">
         <h2 className="mb-4 text-[13px] font-medium text-ink">{t('settings.account')}</h2>
@@ -83,9 +97,15 @@ export function SettingsView({
 
       <section className="rounded-lg border border-line bg-surface p-5">
         <h2 className="mb-3 text-[13px] font-medium text-ink">{t('credits.title')}</h2>
-        <p className="text-[24px] font-semibold tabular-nums text-ink">
+        <p
+          className={`flex items-center gap-2 text-[24px] font-semibold tabular-nums ${
+            status.unlimited ? 'text-accent' : 'text-ink'
+          }`}
+        >
+          {status.unlimited && <InfinityIcon size={20} />}
           {status.unlimited ? t('credits.unlimited') : status.balance.toLocaleString(locale)}
         </p>
+        {status.unlimited && <p className="mt-1 text-[12.5px] text-ink-muted">{t('credits.unlimitedHint')}</p>}
         {!status.unlimited && (
           <p className="mt-1 text-[12.5px] text-ink-muted">
             {t('credits.empty.body', {

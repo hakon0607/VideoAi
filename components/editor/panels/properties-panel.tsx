@@ -11,9 +11,10 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { Clip, MediaClip, TextClip } from '@/types/editor';
-import { EASINGS, TEXT_ANIMATIONS, isMediaClip, isTextClip } from '@/types/editor';
+import { AUDIO_FILTERS, EASINGS, TEXT_ANIMATIONS, isMediaClip, isTextClip } from '@/types/editor';
 import { useEditorStore } from '@/lib/editor/store';
 import { useI18n } from '@/lib/i18n/context';
+import type { DictionaryKey } from '@/lib/i18n/dictionaries';
 import { clipEnd } from '@/lib/editor/time';
 import { EFFECT_RANGES } from '@/lib/editor/defaults';
 import { Button } from '@/components/ui/button';
@@ -53,7 +54,7 @@ export function PropertiesPanel() {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <PanelSection title={clip.kind}>
-        <Row label="Name">
+        <Row label={t('editor.name')}>
           <input
             defaultValue={clip.name}
             key={clip.id}
@@ -66,7 +67,7 @@ export function PropertiesPanel() {
         </Row>
         <div className="grid grid-cols-2 gap-2">
           <NumberControl
-            label="Start"
+            label={t('editor.start')}
             value={clip.start}
             step={0.1}
             min={0}
@@ -74,7 +75,7 @@ export function PropertiesPanel() {
             onCommit={(value) => run('move_clip', { clipId: clip.id, start: value }, 'Move clip')}
           />
           <NumberControl
-            label="End"
+            label={t('editor.end')}
             value={clipEnd(clip)}
             step={0.1}
             suffix="s"
@@ -82,7 +83,7 @@ export function PropertiesPanel() {
           />
         </div>
         <ToggleControl
-          label="Locked"
+          label={t('editor.locked')}
           checked={clip.locked}
           onChange={(locked) => run('set_clip_properties', { clipId: clip.id, locked }, 'Lock clip')}
         />
@@ -91,6 +92,7 @@ export function PropertiesPanel() {
       {isTextClip(clip) && <TextProperties clip={clip} run={run} />}
       {isMediaClip(clip) && clip.kind !== 'audio' && <VisualProperties clip={clip} run={run} />}
       {isMediaClip(clip) && clip.kind !== 'image' && <AudioProperties clip={clip} run={run} />}
+      {isMediaClip(clip) && clip.kind !== 'image' && <AudioProcessingSection clip={clip} run={run} />}
       {clip.kind !== 'audio' && <EffectsSection clip={clip} run={run} />}
       <TransitionSection clip={clip} run={run} />
       <KeyframeSection clip={clip} run={run} />
@@ -153,7 +155,7 @@ function TextProperties({ clip, run }: { clip: TextClip; run: Run }) {
         onCommit={(backgroundColor) => patch({ backgroundColor })}
       />
       <SliderControl
-        label="Outline"
+        label={t('editor.outline')}
         value={style.strokeWidth}
         min={0}
         max={0.02}
@@ -171,12 +173,12 @@ function TextProperties({ clip, run }: { clip: TextClip; run: Run }) {
         >
           {TEXT_ANIMATIONS.map((animation) => (
             <option key={animation} value={animation}>
-              {animation.replace('_', ' ')}
+              {t(`animation.${animation}` as DictionaryKey)}
             </option>
           ))}
         </select>
       </Row>
-      <ToggleControl label="Uppercase" checked={style.uppercase} onChange={(uppercase) => patch({ uppercase })} />
+      <ToggleControl label={t('editor.uppercase')} checked={style.uppercase} onChange={(uppercase) => patch({ uppercase })} />
     </PanelSection>
   );
 }
@@ -313,6 +315,111 @@ function AudioProperties({ clip, run }: { clip: MediaClip; run: Run }) {
   );
 }
 
+/**
+ * The processing chain the preview and the exporter share: a voice preset built
+ * from biquads, a compressor, make-up gain, and ducking under whichever tracks
+ * carry speech.
+ */
+function AudioProcessingSection({ clip, run }: { clip: MediaClip; run: Run }) {
+  const { t } = useI18n();
+  const tracks = useEditorStore((s) => s.state.tracks);
+  const audio = clip.audio;
+  const speechTracks = tracks.filter((track) => track.id !== clip.trackId);
+
+  const set = (patch: Record<string, unknown>, label: string) =>
+    run('set_audio_processing', { clipIds: [clip.id], ...patch }, label);
+
+  return (
+    <PanelSection title={t('editor.audioProcessing')}>
+      <Row label={t('editor.audioFilter')}>
+        <select
+          value={audio.filter}
+          onChange={(e) => set({ filter: e.target.value }, 'Voice preset')}
+          className="h-7 w-full rounded-sm border border-line bg-base px-1.5 text-[12px] text-ink capitalize transition-colors hover:border-line-strong focus:border-accent focus:outline-none"
+        >
+          {AUDIO_FILTERS.map((filter) => (
+            <option key={filter} value={filter}>
+              {t(`audio.filter.${filter}` as Parameters<typeof t>[0])}
+            </option>
+          ))}
+        </select>
+      </Row>
+      <SliderControl
+        label={t('editor.compression')}
+        value={audio.compression}
+        min={0}
+        max={1}
+        step={0.01}
+        format={(v) => `${Math.round(v * 100)}%`}
+        onCommit={(compression) => set({ compression }, 'Compression')}
+      />
+      <SliderControl
+        label={t('editor.gain')}
+        value={audio.gainDb}
+        min={-24}
+        max={24}
+        step={0.5}
+        format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} dB`}
+        onCommit={(gainDb) => set({ gainDb }, 'Gain')}
+      />
+
+      <Button
+        size="sm"
+        variant="secondary"
+        className="w-full"
+        onClick={() => run('enhance_voice', { clipIds: [clip.id] }, 'Enhance voice')}
+      >
+        <Sparkles size={11} /> {t('editor.enhanceVoice')}
+      </Button>
+
+      {speechTracks.length > 0 && (
+        <>
+          <p className="pt-1 text-[10.5px] tracking-wider text-ink-faint uppercase">{t('editor.ducking')}</p>
+          <div className="space-y-1">
+            {speechTracks.map((track) => {
+              const on = audio.duckUnderTrackIds.includes(track.id);
+              return (
+                <label
+                  key={track.id}
+                  className="flex cursor-pointer items-center gap-2 rounded-sm px-1 py-0.5 text-[11.5px] text-ink-muted transition-colors hover:bg-elevated"
+                >
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={() =>
+                      set(
+                        {
+                          duckUnderTrackIds: on
+                            ? audio.duckUnderTrackIds.filter((id) => id !== track.id)
+                            : [...audio.duckUnderTrackIds, track.id],
+                        },
+                        'Ducking',
+                      )
+                    }
+                    className="accent-[var(--color-accent)]"
+                  />
+                  <span className="truncate">{track.name}</span>
+                </label>
+              );
+            })}
+          </div>
+          {audio.duckUnderTrackIds.length > 0 && (
+            <SliderControl
+              label={t('editor.duckAmount')}
+              value={audio.duckAmount}
+              min={0}
+              max={1}
+              step={0.01}
+              format={(v) => `−${Math.round(v * 100)}%`}
+              onCommit={(duckAmount) => set({ duckAmount }, 'Duck amount')}
+            />
+          )}
+        </>
+      )}
+    </PanelSection>
+  );
+}
+
 function EffectsSection({ clip, run }: { clip: Clip; run: Run }) {
   const { t } = useI18n();
   if (clip.effects.length === 0) return null;
@@ -323,7 +430,7 @@ function EffectsSection({ clip, run }: { clip: Clip; run: Run }) {
         return (
           <div key={effect.id} className="rounded-sm border border-line bg-base p-2">
             <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-[11.5px] text-ink capitalize">{effect.type.replace('_', ' ')}</span>
+              <span className="text-[11.5px] text-ink">{t(`effect.${effect.type}` as DictionaryKey)}</span>
               <div className="flex items-center gap-1">
                 <ToggleControl
                   label=""
@@ -384,18 +491,18 @@ function TransitionSection({ clip, run }: { clip: Clip; run: Run }) {
                     'Set transition',
                   )
                 }
-                className="h-7 w-full rounded-sm border border-line bg-base px-1.5 text-[11.5px] text-ink capitalize"
+                className="h-7 w-full rounded-sm border border-line bg-base px-1.5 text-[11.5px] text-ink"
               >
                 {types.map((type) => (
                   <option key={type} value={type}>
-                    {type}
+                    {t(`transition.${type}` as DictionaryKey)}
                   </option>
                 ))}
               </select>
             </Row>
             {transition && (
               <SliderControl
-                label="Duration"
+                label={t('editor.duration')}
                 value={transition.duration}
                 min={0.05}
                 max={Math.max(0.2, clip.duration / 2)}
@@ -414,12 +521,13 @@ function TransitionSection({ clip, run }: { clip: Clip; run: Run }) {
 }
 
 function KeyframeSection({ clip, run }: { clip: Clip; run: Run }) {
+  const { t } = useI18n();
   const properties = [...new Set(clip.keyframes.map((k) => k.property))];
   if (properties.length === 0) {
     return (
-      <PanelSection title="Animation">
+      <PanelSection title={t('editor.animation')}>
         <p className="text-[11.5px] leading-relaxed text-ink-faint">
-          Ask the assistant for an animation, for example &quot;zoom slowly in on this clip&quot;.
+          {t('editor.animationHint')}
         </p>
         <Button
           size="sm"
@@ -440,7 +548,7 @@ function KeyframeSection({ clip, run }: { clip: Clip; run: Run }) {
   }
 
   return (
-    <PanelSection title="Animation">
+    <PanelSection title={t('editor.animation')}>
       {properties.map((property) => {
         const frames = clip.keyframes.filter((k) => k.property === property).sort((a, b) => a.time - b.time);
         return (

@@ -230,7 +230,7 @@ export function AssistantPanel({
   const allChanges = messages.filter((m) => m.role === 'assistant' && m.descriptions.length > 0);
 
   return (
-    <aside className="flex w-[340px] shrink-0 flex-col border-l border-line bg-surface">
+    <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex h-11 shrink-0 items-center justify-between border-b border-line px-3">
         <span className="flex items-center gap-2 text-[12.5px] font-medium text-ink">
           <Sparkles size={13} className="text-accent" />
@@ -289,7 +289,16 @@ export function AssistantPanel({
               <p className="text-[13px] font-medium text-ink">{t('ai.empty.title')}</p>
               <p className="mx-auto mt-1 max-w-56 text-[12px] leading-relaxed text-ink-muted">{t('ai.empty.body')}</p>
               <div className="mt-4 space-y-1.5">
-                {(['ai.example.1', 'ai.example.2', 'ai.example.3', 'ai.example.4'] as const).map((key) => (
+                {(
+                  [
+                    'ai.example.5',
+                    'ai.example.1',
+                    'ai.example.2',
+                    'ai.example.6',
+                    'ai.example.3',
+                    'ai.example.4',
+                  ] as const
+                ).map((key) => (
                   <button
                     key={key}
                     onClick={() => void send(t(key))}
@@ -445,6 +454,6 @@ export function AssistantPanel({
           </button>
         </div>
       </form>
-    </aside>
+    </div>
   );
 }

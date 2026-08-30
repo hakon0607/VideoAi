@@ -7,12 +7,13 @@ import { useMediaUrls } from '@/lib/editor/media-urls';
 import { useAutosave } from '@/lib/hooks/use-autosave';
 import { useShortcuts } from '@/lib/hooks/use-shortcuts';
 import { useMediaUrlRefresh } from '@/lib/hooks/use-media-urls-refresh';
+import { useSoundEffects } from '@/lib/hooks/use-sound-effects';
 import { clipEnd } from '@/lib/editor/time';
 import { Topbar } from './topbar';
 import { LeftPanel } from './panels/left-panel';
 import { PreviewPanel } from './preview/preview-panel';
 import { TimelinePanel } from './timeline/timeline-panel';
-import { AssistantPanel } from './ai/assistant-panel';
+import { RightPanel } from './panels/right-panel';
 import { ExportDialog } from './export/export-dialog';
 
 export function EditorRoot({
@@ -20,7 +21,7 @@ export function EditorRoot({
   user,
 }: {
   bootstrap: EditorBootstrap;
-  user: { id: string; email: string; displayName: string; username: string };
+  user: { id: string; email: string; displayName: string; username: string; isAdmin: boolean };
 }) {
   const load = useEditorStore((s) => s.load);
   const ready = useEditorStore((s) => s.ready);
@@ -40,6 +41,7 @@ export function EditorRoot({
   const capture = useCallback(async () => captureRef.current?.() ?? null, []);
   const { saveNow } = useAutosave(capture, user.id);
   useMediaUrlRefresh();
+  useSoundEffects(bootstrap.state.projectId, user.id);
 
   /* ------------------------------------------------------------------ */
   /* Keyboard                                                            */
@@ -86,6 +88,44 @@ export function EditorRoot({
       },
       onToggleSelectTool: () => undefined,
       onEscape: () => useEditorStore.getState().clearSelection(),
+      onMarker: () => {
+        const store = useEditorStore.getState();
+        store.dispatch([{ type: 'add_marker', params: { time: store.playhead } }], { label: 'Add marker' });
+      },
+      onRippleDelete: () => {
+        const store = useEditorStore.getState();
+        if (store.selection.clipIds.length === 0) return;
+        store.dispatch(
+          store.selection.clipIds.map((clipId) => ({ type: 'ripple_delete_clip', params: { clipId } })),
+          { label: 'Ripple delete' },
+        );
+      },
+      onSelectAll: () => {
+        const store = useEditorStore.getState();
+        store.select(store.state.clips.map((c) => c.id));
+      },
+      // Up and down walk the cut points, the way every NLE does it.
+      onJumpEdge: (direction: -1 | 1) => {
+        const store = useEditorStore.getState();
+        const edges = new Set<number>([0]);
+        for (const clip of store.state.clips) {
+          edges.add(clip.start);
+          edges.add(clipEnd(clip));
+        }
+        const sorted = [...edges].sort((a, b) => a - b);
+        const here = store.playhead;
+        const next =
+          direction === 1
+            ? sorted.find((time) => time > here + 0.001)
+            : [...sorted].reverse().find((time) => time < here - 0.001);
+        if (next !== undefined) store.setPlayhead(next);
+      },
+      onGoToStart: () => useEditorStore.getState().setPlayhead(0),
+      onGoToEnd: () => {
+        const store = useEditorStore.getState();
+        const end = store.state.clips.reduce((max, clip) => Math.max(max, clipEnd(clip)), 0);
+        store.setPlayhead(end);
+      },
     }),
     [saveNow],
   );
@@ -139,7 +179,7 @@ export function EditorRoot({
           </div>
         </main>
 
-        <AssistantPanel
+        <RightPanel
           projectId={bootstrap.state.projectId}
           conversationId={bootstrap.conversationId}
           initialMessages={bootstrap.messages}

@@ -9,7 +9,7 @@ import { useT } from '@/lib/i18n/context';
 import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils/cn';
 
-const SPEEDS = [0.25, 0.5, 1, 1.5, 2];
+const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
 export function Transport({
   masterVolume,
@@ -31,7 +31,8 @@ export function Transport({
   // 60 fps playhead re-renders this bar and nothing else.
   const [playhead, setLocalPlayhead] = useState(() => useEditorStore.getState().playhead);
   const [duration, setDuration] = useState(() => timelineDuration(useEditorStore.getState().state));
-  const [speed, setSpeed] = useState(1);
+  const speed = useEditorStore((s) => s.previewRate);
+  const setSpeed = useEditorStore((s) => s.setPreviewRate);
 
   useEffect(
     () =>
@@ -93,14 +94,7 @@ export function Transport({
 
       <select
         value={speed}
-        onChange={(e) => {
-          const value = Number(e.target.value);
-          setSpeed(value);
-          // Playback speed is a preview convenience; it never touches the project.
-          document.querySelectorAll('video, audio').forEach((el) => {
-            (el as HTMLMediaElement).defaultPlaybackRate = value;
-          });
-        }}
+        onChange={(e) => setSpeed(Number(e.target.value))}
         className="h-7 rounded-sm border border-line bg-base px-1.5 text-[11.5px] text-ink-muted"
         aria-label={t('editor.speed')}
       >

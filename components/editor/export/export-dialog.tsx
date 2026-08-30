@@ -32,6 +32,26 @@ const QUALITY_KEYS = {
   very_high: 'export.quality.very_high',
 } as const;
 
+/**
+ * One honest number for the whole render.
+ *
+ * Each stage reports its own 0–1, so showing that directly makes the bar jump
+ * back to zero twice. These weights are roughly how long each stage takes on a
+ * normal project, which keeps the bar moving forwards the whole way.
+ */
+function overallFraction(progress: ExportProgress): number {
+  switch (progress.stage) {
+    case 'preparing':
+      return progress.fraction * 0.04;
+    case 'video':
+      return 0.04 + progress.fraction * 0.76;
+    case 'audio':
+      return 0.8 + progress.fraction * 0.17;
+    default:
+      return 0.97 + progress.fraction * 0.03;
+  }
+}
+
 export function ExportDialog({
   open,
   onClose,
@@ -57,6 +77,8 @@ export function ExportDialog({
   const [saveCopy, setSaveCopy] = useState(false);
 
   const [supported, setSupported] = useState<boolean | null>(null);
+  /** What this browser can actually encode; 'vp9' means no MP4. */
+  const [codec, setCodec] = useState<'avc' | 'vp9' | null>(null);
   const [undecodable, setUndecodable] = useState<string[]>([]);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [result, setResult] = useState<{ url: string; name: string; size: number } | null>(null);
@@ -74,6 +96,10 @@ export function ExportDialog({
       const support = await checkExportSupport();
       if (cancelled) return;
       setSupported(support.supported);
+      setCodec(support.codec);
+      // Offering MP4 that would silently come out as WebM is worse than not
+      // offering it, so the choice follows what the browser can do.
+      if (support.codec === 'vp9') setFormat('webm');
       const problems = await checkProjectDecodable(
         useEditorStore.getState().state,
         useMediaUrls.getState().urls,
@@ -229,13 +255,16 @@ export function ExportDialog({
           <div className="h-1.5 overflow-hidden rounded-full bg-line">
             <div
               className="h-full bg-accent transition-[width] duration-150"
-              style={{ width: `${Math.round(progress.fraction * 100)}%` }}
+              style={{ width: `${Math.round(overallFraction(progress) * 100)}%` }}
             />
           </div>
           <p className="text-[12.5px] text-ink-muted">
-            {t('export.rendering', { percent: Math.round(progress.fraction * 100) })}
-            {progress.totalFrames ? ` · ${progress.frame}/${progress.totalFrames}` : ''}
-            {progress.stage === 'audio' ? ' · audio' : ''}
+            {t('export.rendering', { percent: Math.round(overallFraction(progress) * 100) })}
+            {' · '}
+            {t(`export.stage.${progress.stage}` as Parameters<typeof t>[0])}
+            {progress.stage === 'video' && progress.totalFrames
+              ? ` · ${progress.frame}/${progress.totalFrames}`
+              : ''}
           </p>
         </div>
       ) : (
@@ -277,11 +306,17 @@ export function ExportDialog({
             </Field>
             <Field label={t('export.format')}>
               <Select value={format} onChange={(e) => setFormat(e.target.value as ExportFormat)}>
-                <option value="mp4">MP4 (H.264)</option>
+                <option value="mp4" disabled={codec === 'vp9'}>
+                  MP4 (H.264)
+                </option>
                 <option value="webm">WebM (VP9)</option>
               </Select>
             </Field>
           </div>
+
+          {codec === 'vp9' && (
+            <p className="text-[11.5px] leading-relaxed text-ink-faint">{t('export.noMp4')}</p>
+          )}
 
           <Field label={t('export.quality')}>
             <Select value={quality} onChange={(e) => setQuality(e.target.value as ExportQuality)}>
@@ -294,8 +329,8 @@ export function ExportDialog({
           </Field>
 
           <div className="space-y-2 rounded-md border border-line bg-base px-3 py-2.5">
-            <ToggleControl label="Include audio" checked={includeAudio} onChange={setIncludeAudio} />
-            <ToggleControl label="Also save a copy to this project" checked={saveCopy} onChange={setSaveCopy} />
+            <ToggleControl label={t('export.includeAudio')} checked={includeAudio} onChange={setIncludeAudio} />
+            <ToggleControl label={t('export.saveCopy')} checked={saveCopy} onChange={setSaveCopy} />
           </div>
 
           <p className="text-[11.5px] text-ink-faint">

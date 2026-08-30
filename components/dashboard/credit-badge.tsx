@@ -29,9 +29,11 @@ export function CreditBadge({ compact = false }: { compact?: boolean }) {
         className={cn(
           'inline-flex items-center gap-1.5 rounded-md border px-2.5 text-[12px] font-medium transition-colors',
           compact ? 'h-7' : 'h-8',
-          low
-            ? 'border-warning/40 bg-warning/10 text-warning hover:bg-warning/15'
-            : 'border-line bg-elevated text-ink-muted hover:text-ink',
+          status.unlimited
+            ? 'border-accent/50 bg-accent-soft text-accent hover:bg-accent/20'
+            : low
+              ? 'border-warning/40 bg-warning/10 text-warning hover:bg-warning/15'
+              : 'border-line bg-elevated text-ink-muted hover:text-ink',
         )}
         title={t('credits.title')}
       >
@@ -41,10 +43,24 @@ export function CreditBadge({ compact = false }: { compact?: boolean }) {
 
       <Modal open={open} onClose={() => setOpen(false)} title={t('credits.title')} width="sm">
         <div className="space-y-4">
-          <div className="rounded-md border border-line bg-base px-4 py-3.5">
-            <div className="text-[26px] font-semibold tabular-nums text-ink">
+          <div
+            className={cn(
+              'rounded-md border px-4 py-3.5',
+              status.unlimited ? 'border-accent/40 bg-accent-soft' : 'border-line bg-base',
+            )}
+          >
+            <div
+              className={cn(
+                'flex items-center gap-2 text-[26px] font-semibold tabular-nums',
+                status.unlimited ? 'text-accent' : 'text-ink',
+              )}
+            >
+              {status.unlimited && <InfinityIcon size={22} />}
               {status.unlimited ? t('credits.unlimited') : status.balance.toLocaleString(locale)}
             </div>
+            {status.unlimited && (
+              <p className="mt-1 text-[12.5px] text-ink-muted">{t('credits.unlimitedHint')}</p>
+            )}
             {!status.unlimited && (
               <p className="mt-1 text-[12.5px] text-ink-muted">
                 {status.nextRefillAt

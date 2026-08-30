@@ -33,6 +33,7 @@ export default async function EditorPage({ params }: { params: Promise<{ project
         email: session.user.email ?? '',
         displayName: session.profile?.display_name ?? '',
         username: session.profile?.username ?? '',
+        isAdmin: Boolean(session.profile?.is_admin),
       }}
     />
   );

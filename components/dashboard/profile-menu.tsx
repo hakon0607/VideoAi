@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { LogOut, Settings as SettingsIcon, User as UserIcon } from 'lucide-react';
+import { LogOut, Settings as SettingsIcon, Shield, User as UserIcon } from 'lucide-react';
 import { useI18n } from '@/lib/i18n/context';
 import { LOCALE_LABELS, LOCALES } from '@/lib/i18n/dictionaries';
 
@@ -10,10 +10,12 @@ export function ProfileMenu({
   displayName,
   username,
   email,
+  isAdmin = false,
 }: {
   displayName: string;
   username: string;
   email: string;
+  isAdmin?: boolean;
 }) {
   const { t, locale, setLocale } = useI18n();
   const [open, setOpen] = useState(false);
@@ -45,9 +47,16 @@ export function ProfileMenu({
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="grid h-8 w-8 place-items-center rounded-full border border-line bg-elevated text-[11px] font-semibold text-ink transition-colors hover:border-line-strong"
+        className={`relative grid h-8 w-8 place-items-center rounded-full border text-[11px] font-semibold text-ink transition-colors ${
+          isAdmin ? 'border-accent/60 bg-accent-soft' : 'border-line bg-elevated hover:border-line-strong'
+        }`}
       >
         {initials || <UserIcon size={14} />}
+        {isAdmin && (
+          <span className="absolute -right-0.5 -bottom-0.5 grid h-3.5 w-3.5 place-items-center rounded-full bg-accent text-white">
+            <Shield size={8} />
+          </span>
+        )}
       </button>
 
       {open && (
@@ -56,7 +65,14 @@ export function ProfileMenu({
           className="absolute right-0 z-50 mt-2 w-60 overflow-hidden rounded-lg border border-line bg-surface shadow-pop animate-fade-in"
         >
           <div className="border-b border-line px-3.5 py-3">
-            <p className="truncate text-[13px] font-medium text-ink">{displayName || username}</p>
+            <p className="flex items-center gap-1.5 truncate text-[13px] font-medium text-ink">
+              {displayName || username}
+              {isAdmin && (
+                <span className="inline-flex items-center gap-0.5 rounded-xs bg-accent-soft px-1 py-px text-[9.5px] font-medium text-accent">
+                  <Shield size={8} /> Admin
+                </span>
+              )}
+            </p>
             <p className="truncate text-[12px] text-ink-faint">{email}</p>
           </div>
 
@@ -75,6 +91,15 @@ export function ProfileMenu({
             >
               <SettingsIcon size={14} /> {t('common.settings')}
             </Link>
+            {isAdmin && (
+              <Link
+                href="/admin"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2.5 rounded-sm px-2.5 py-2 text-[13px] text-accent transition-colors hover:bg-elevated"
+              >
+                <Shield size={14} /> {t('admin.title')}
+              </Link>
+            )}
           </div>
 
           <div className="border-t border-line px-3.5 py-2.5">

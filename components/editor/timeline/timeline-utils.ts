@@ -1,17 +1,17 @@
 import type { Clip, EditorState } from '@/types/editor';
 import { clipEnd } from '@/lib/editor/time';
 
-export const TRACK_HEADER_WIDTH = 148;
+export const TRACK_HEADER_WIDTH = 172;
 export const RULER_HEIGHT = 26;
 export const TRACK_GAP = 4;
 
 /** Chooses a readable tick spacing for the current zoom level. */
 export function tickInterval(pixelsPerSecond: number): { major: number; minor: number } {
-  const candidates = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+  const candidates = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
   for (const step of candidates) {
     if (step * pixelsPerSecond >= 72) return { major: step, minor: step / 5 };
   }
-  return { major: 900, minor: 180 };
+  return { major: 7200, minor: 1800 };
 }
 
 export interface SnapTarget {
@@ -34,6 +34,9 @@ export function snapTargets(state: EditorState, playhead: number, excludeIds: Se
 }
 
 /** Snaps `time` to the nearest target within `thresholdPx`. */
+/** Longest distance snapping may ever move a clip, however far you zoom out. */
+const MAX_SNAP_SECONDS = 1.5;
+
 export function snapTime(
   time: number,
   targets: SnapTarget[],
@@ -41,7 +44,7 @@ export function snapTime(
   thresholdPx = 7,
 ): { time: number; snappedTo: number | null } {
   let best: number | null = null;
-  let bestDistance = thresholdPx / pixelsPerSecond;
+  let bestDistance = Math.min(MAX_SNAP_SECONDS, thresholdPx / pixelsPerSecond);
   for (const target of targets) {
     const distance = Math.abs(target.time - time);
     if (distance < bestDistance) {

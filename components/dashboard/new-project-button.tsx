@@ -23,7 +23,7 @@ export function NewProjectButton({ presetId }: { presetId?: string }) {
       <Modal open={open} onClose={() => setOpen(false)} title={t('dashboard.newProject.title')} width="sm">
         <form action={createProjectAction} onSubmit={() => setSubmitting(true)} className="space-y-4">
           <Field label={t('dashboard.newProject.name')}>
-            <Input name="name" autoFocus placeholder="My podcast episode" />
+            <Input name="name" autoFocus placeholder={t('dashboard.projectNamePlaceholder')} />
           </Field>
           <Field label={t('dashboard.newProject.preset')}>
             <Select name="preset" defaultValue={presetId ?? 'youtube_1080p'}>

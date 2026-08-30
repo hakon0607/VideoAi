@@ -96,7 +96,7 @@ export function ProjectCard({ project }: { project: ProjectSummary }) {
             e.preventDefault();
             setMenuOpen((v) => !v);
           }}
-          aria-label="Project actions"
+          aria-label={t('dashboard.projectActions')}
           className="grid h-7 w-7 place-items-center rounded-sm border border-line-strong bg-black/70 text-ink backdrop-blur-sm transition-colors hover:bg-black/85"
         >
           <MoreHorizontal size={14} />

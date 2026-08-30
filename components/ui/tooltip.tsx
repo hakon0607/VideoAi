@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { cloneElement, isValidElement, useState } from 'react';
 import { cn } from '@/lib/utils/cn';
 
 /**
@@ -22,6 +22,16 @@ export function Tooltip({
 }) {
   const [open, setOpen] = useState(false);
 
+  // Most of these wrap an icon-only button. Without a name a screen reader
+  // announces "button" and nothing else, so the tooltip's label becomes the
+  // element's accessible name too.
+  const labelled =
+    isValidElement<{ 'aria-label'?: string; title?: string }>(children) &&
+    !children.props['aria-label'] &&
+    !children.props.title
+      ? cloneElement(children, { 'aria-label': label })
+      : children;
+
   const sideClass = {
     top: 'bottom-full left-1/2 -translate-x-1/2 mb-1.5',
     bottom: 'top-full left-1/2 -translate-x-1/2 mt-1.5',
@@ -37,7 +47,7 @@ export function Tooltip({
       onFocusCapture={() => setOpen(true)}
       onBlurCapture={() => setOpen(false)}
     >
-      {children}
+      {labelled}
       {open && (
         <span
           role="tooltip"

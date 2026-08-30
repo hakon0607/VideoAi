@@ -25,7 +25,7 @@ export function ProjectSettingsDialog({ open, onClose }: { open: boolean; onClos
       footer={<Button onClick={onClose}>{t('common.close')}</Button>}
     >
       <div className="space-y-3.5">
-        <Field label="Preset">
+        <Field label={t('editor.preset')}>
           <Select
             value=""
             onChange={(e) => {

@@ -4,19 +4,7 @@ import { EFFECT_TYPES } from '@/types/editor';
 import { useEditorStore } from '@/lib/editor/store';
 import { useI18n } from '@/lib/i18n/context';
 import { EFFECT_DEFAULTS } from '@/lib/editor/defaults';
-
-const DESCRIPTIONS: Record<string, string> = {
-  blur: 'Soften the image',
-  brightness: 'Lift or crush the exposure',
-  contrast: 'Deepen the blacks',
-  saturation: 'Richer or flatter colour',
-  grayscale: 'Remove all colour',
-  sepia: 'Warm vintage tint',
-  hue_rotate: 'Shift every hue',
-  invert: 'Invert the colours',
-  vignette: 'Darken the edges',
-  sharpen: 'Crisper detail',
-};
+import type { DictionaryKey } from '@/lib/i18n/dictionaries';
 
 export function EffectsPanel() {
   const { t } = useI18n();
@@ -47,8 +35,10 @@ export function EffectsPanel() {
                 }
                 className="rounded-md border border-line bg-base px-2.5 py-2 text-left transition-colors hover:border-line-strong hover:bg-elevated"
               >
-                <span className="block text-[12px] text-ink capitalize">{type.replace('_', ' ')}</span>
-                <span className="mt-0.5 block text-[10.5px] leading-tight text-ink-faint">{DESCRIPTIONS[type]}</span>
+                <span className="block text-[12px] text-ink">{t(`effect.${type}` as DictionaryKey)}</span>
+                <span className="mt-0.5 block text-[10.5px] leading-tight text-ink-faint">
+                  {t(`effect.${type}.about` as DictionaryKey)}
+                </span>
               </button>
             ))}
           </div>
