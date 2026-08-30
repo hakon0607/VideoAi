@@ -9,7 +9,8 @@ create table if not exists auth.users (
   id uuid primary key default gen_random_uuid(),
   email text unique,
   raw_user_meta_data jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  last_sign_in_at timestamptz
 );
 
 -- The current user is carried in a GUC, exactly like Supabase does with the JWT.

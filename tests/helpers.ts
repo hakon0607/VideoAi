@@ -3,8 +3,14 @@ import { emptyState } from '@/lib/editor/defaults';
 import { createSequentialIdFactory } from '@/lib/editor/ids';
 import type { ActionContext } from '@/lib/editor/action-kit';
 
+// Each context gets its own prefix, so ids from two batches in the same test
+// can never collide the way real uuids never collide.
+let contextCounter = 0;
+
 export function testContext(): ActionContext {
-  return { newId: createSequentialIdFactory('aaaa') };
+  contextCounter += 1;
+  const prefix = (0xaaa0 + contextCounter).toString(16).slice(-4);
+  return { newId: createSequentialIdFactory(prefix) };
 }
 
 export const TRACK_IDS: [string, string, string] = [
@@ -16,7 +22,8 @@ export const TRACK_IDS: [string, string, string] = [
 export function videoAsset(id: string, duration = 60): MediaAsset {
   return {
     id,
-    projectId: 'project-1',
+    projectId: 'p9001111-1111-4111-8111-111111111111',
+    folderId: null,
     kind: 'video',
     name: 'interview.mp4',
     storagePath: `user/u1/projects/p1/media/${id}`,
@@ -37,6 +44,6 @@ export function videoAsset(id: string, duration = 60): MediaAsset {
 }
 
 export function stateWithVideo(duration = 60): EditorState {
-  const state = emptyState('project-1', 'timeline-1', 'Test project', TRACK_IDS);
-  return { ...state, assets: [videoAsset('asset-1', duration)] };
+  const state = emptyState('p9001111-1111-4111-8111-111111111111', 'timeline-1', 'Test project', TRACK_IDS);
+  return { ...state, assets: [videoAsset('a5501111-1111-4111-8111-111111111111', duration)] };
 }

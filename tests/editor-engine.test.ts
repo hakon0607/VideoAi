@@ -11,7 +11,7 @@ function withClip(duration = 60) {
   const base = stateWithVideo(duration);
   const { state } = applyAction(
     base,
-    { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1' } },
+    { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111' } },
     ctx,
   );
   return { state, ctx, clipId: state.clips[0].id };
@@ -41,21 +41,21 @@ describe('create_clip', () => {
 
   it('appends after the previous clip', () => {
     const { state, ctx } = withClip(10);
-    const next = applyAction(state, { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1' } }, ctx);
+    const next = applyAction(state, { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111' } }, ctx);
     expect(next.state.clips[1].start).toBeCloseTo(10);
   });
 
   it('refuses an asset that is not in the project', () => {
     const state = stateWithVideo();
     expect(() =>
-      applyAction(state, { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'nope' } }),
+      applyAction(state, { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'deadbeef-0000-4000-8000-000000000000' } }),
     ).toThrowError(/No media asset/);
   });
 
   it('refuses a video clip on an audio track', () => {
     const state = stateWithVideo();
     expect(() =>
-      applyAction(state, { type: 'create_clip', params: { trackId: TRACK_IDS[1], assetId: 'asset-1' } }),
+      applyAction(state, { type: 'create_clip', params: { trackId: TRACK_IDS[1], assetId: 'a5501111-1111-4111-8111-111111111111' } }),
     ).toThrowError(/cannot go on a audio track/);
   });
 });
@@ -123,7 +123,7 @@ describe('set_clip_speed', () => {
     const { state, ctx } = withClip(10);
     const second = applyAction(
       state,
-      { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1' } },
+      { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111' } },
       ctx,
     ).state;
     const first = second.clips[0];
@@ -167,5 +167,99 @@ describe('applyActions', () => {
     // Replaying the normalized action on the original state gives the same ids.
     const replay = applyActions(state, [normalized], testContext());
     expect(replay.state.clips.map((c) => c.id).sort()).toEqual(result.state.clips.map((c) => c.id).sort());
+  });
+});
+
+describe('automatic track stacking', () => {
+  it('puts an overlapping clip on a new track instead of hiding it', () => {
+    const ctx = testContext();
+    const base = stateWithVideo(60);
+    const first = applyAction(
+      base,
+      { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 0, duration: 10 } },
+      ctx,
+    ).state;
+
+    // The same spot is taken, and there is no other video track.
+    const second = applyAction(
+      first,
+      { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 2, duration: 6 } },
+      ctx,
+    ).state;
+
+    expect(second.tracks).toHaveLength(4);
+    expect(second.clips[1].trackId).not.toBe(second.clips[0].trackId);
+    const created = second.tracks.find((t) => t.id === second.clips[1].trackId);
+    expect(created?.kind).toBe('video');
+  });
+
+  it('reuses an existing free track before adding another', () => {
+    const ctx = testContext();
+    const withTrack = applyAction(stateWithVideo(60), { type: 'create_track', params: { kind: 'video' } }, ctx).state;
+    const extraTrackId = withTrack.tracks[withTrack.tracks.length - 1].id;
+
+    const first = applyAction(
+      withTrack,
+      { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 0, duration: 10 } },
+      ctx,
+    ).state;
+    const second = applyAction(
+      first,
+      { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 1, duration: 5 } },
+      ctx,
+    ).state;
+
+    expect(second.tracks).toHaveLength(withTrack.tracks.length);
+    expect(second.clips[1].trackId).toBe(extraTrackId);
+  });
+
+  it('leaves a non-overlapping clip on the requested track', () => {
+    const ctx = testContext();
+    const first = applyAction(
+      stateWithVideo(60),
+      { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 0, duration: 10 } },
+      ctx,
+    ).state;
+    const second = applyAction(
+      first,
+      { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 10, duration: 5 } },
+      ctx,
+    ).state;
+    expect(second.tracks).toHaveLength(3);
+    expect(second.clips[1].trackId).toBe(TRACK_IDS[0]);
+  });
+
+  it('cannot be turned off: a clip is never hidden behind another', () => {
+    const ctx = testContext();
+    const first = applyAction(
+      stateWithVideo(60),
+      { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 0, duration: 10 } },
+      ctx,
+    ).state;
+    // `stack: false` used to mean "put it there anyway"; an unknown key is now
+    // ignored and the clip still lands on a lane of its own.
+    const second = applyAction(
+      first,
+      { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 2, duration: 4, stack: false } },
+      ctx,
+    ).state;
+    expect(second.tracks).toHaveLength(4);
+    expect(second.clips[1].trackId).not.toBe(TRACK_IDS[0]);
+  });
+
+  it('stacks text the same way', () => {
+    const ctx = testContext();
+    const first = applyAction(
+      stateWithVideo(60),
+      { type: 'add_text', params: { trackId: TRACK_IDS[2], text: 'One', start: 0, duration: 4 } },
+      ctx,
+    ).state;
+    const second = applyAction(
+      first,
+      { type: 'add_text', params: { trackId: TRACK_IDS[2], text: 'Two', start: 1, duration: 4 } },
+      ctx,
+    ).state;
+    expect(second.clips[1].trackId).not.toBe(second.clips[0].trackId);
+    expect(second.tracks.filter((t) => t.kind === 'text')).toHaveLength(2);
   });
 });

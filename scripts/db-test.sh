@@ -11,4 +11,15 @@ for f in supabase/test/00_stub_supabase.sql supabase/migrations/*.sql; do
   psql -v ON_ERROR_STOP=1 -q -f "$f"
 done
 psql -v ON_ERROR_STOP=1 -f supabase/test/10_rls_test.sql
-echo "Schema and RLS tests passed."
+
+# The admin suite needs a clean database of its own.
+ADMIN_DB="${DB}_admin"
+dropdb --if-exists "$ADMIN_DB"
+createdb "$ADMIN_DB"
+export PGDATABASE=$ADMIN_DB
+for f in supabase/test/00_stub_supabase.sql supabase/migrations/*.sql; do
+  psql -v ON_ERROR_STOP=1 -q -f "$f"
+done
+psql -v ON_ERROR_STOP=1 -f supabase/test/11_admin_test.sql
+
+echo "Schema, RLS and admin tests passed." 

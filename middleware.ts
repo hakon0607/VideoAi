@@ -11,6 +11,6 @@ export const config = {
      * Everything except static assets and image files. API routes are included
      * so the session cookie is refreshed for them too.
      */
-    '/((?!_next/static|_next/image|favicon.ico|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2?)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|woff2?|mp4|webm|mp3|wav|m4a|ogg)$).*)',
   ],
 };

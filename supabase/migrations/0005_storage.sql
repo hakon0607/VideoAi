@@ -9,9 +9,14 @@
 -- The first two buckets are private; the app hands out short-lived signed URLs.
 -- ===========================================================================
 
+-- file_size_limit is left null on purpose: the bucket then inherits the
+-- project's global upload limit, which is what the plan actually allows.
+-- Setting a number here that is larger than the plan permits is rejected.
+-- Raise the real ceiling in the dashboard under Storage -> Settings
+-- (the free plan defaults to 50 MB).
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
-  'media', 'media', false, 2147483648,
+  'media', 'media', false, null,
   array[
     'video/mp4','video/quicktime','video/webm','video/x-msvideo','video/avi','video/x-matroska',
     'audio/mpeg','audio/mp3','audio/wav','audio/x-wav','audio/mp4','audio/x-m4a','audio/aac','audio/ogg','audio/webm',
@@ -24,7 +29,7 @@ on conflict (id) do update set
   allowed_mime_types = excluded.allowed_mime_types;
 
 insert into storage.buckets (id, name, public, file_size_limit)
-values ('exports', 'exports', false, 5368709120)
+values ('exports', 'exports', false, null)
 on conflict (id) do update set public = excluded.public, file_size_limit = excluded.file_size_limit;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

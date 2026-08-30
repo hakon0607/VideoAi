@@ -123,6 +123,7 @@ export interface Database {
           transition_in: Json | null;
           transition_out: Json | null;
           created_at: string;
+          audio_processing: Json | null;
         };
         Insert: {
           id?: string;
@@ -154,6 +155,7 @@ export interface Database {
           transition_in?: Json | null;
           transition_out?: Json | null;
           created_at?: string;
+          audio_processing?: Json | null;
         };
         Update: {
           id?: string;
@@ -185,6 +187,7 @@ export interface Database {
           transition_in?: Json | null;
           transition_out?: Json | null;
           created_at?: string;
+          audio_processing?: Json | null;
         };
         Relationships: [];
       };
@@ -389,6 +392,36 @@ export interface Database {
         };
         Relationships: [];
       };
+      markers: {
+        Row: {
+          id: string;
+          timeline_id: string;
+          project_id: string;
+          time_seconds: number;
+          label: string;
+          color: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          timeline_id: string;
+          project_id: string;
+          time_seconds: number;
+          label?: string;
+          color?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          timeline_id?: string;
+          project_id?: string;
+          time_seconds?: number;
+          label?: string;
+          color?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       media_analysis: {
         Row: {
           asset_id: string;
@@ -454,6 +487,7 @@ export interface Database {
           analysis_error: string | null;
           created_at: string;
           updated_at: string;
+          folder_id: string | null;
         };
         Insert: {
           id?: string;
@@ -477,6 +511,7 @@ export interface Database {
           analysis_error?: string | null;
           created_at?: string;
           updated_at?: string;
+          folder_id?: string | null;
         };
         Update: {
           id?: string;
@@ -500,6 +535,31 @@ export interface Database {
           analysis_error?: string | null;
           created_at?: string;
           updated_at?: string;
+          folder_id?: string | null;
+        };
+        Relationships: [];
+      };
+      media_folders: {
+        Row: {
+          id: string;
+          project_id: string;
+          parent_id: string | null;
+          name: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          parent_id?: string | null;
+          name: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          parent_id?: string | null;
+          name?: string;
+          created_at?: string;
         };
         Relationships: [];
       };
@@ -536,6 +596,30 @@ export interface Database {
           is_admin?: boolean;
           created_at?: string;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      project_folders: {
+        Row: {
+          id: string;
+          owner_id: string;
+          name: string;
+          color: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          owner_id: string;
+          name: string;
+          color?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          owner_id?: string;
+          name?: string;
+          color?: string;
+          created_at?: string;
         };
         Relationships: [];
       };
@@ -583,6 +667,7 @@ export interface Database {
           last_opened_at: string | null;
           created_at: string;
           updated_at: string;
+          folder_id: string | null;
         };
         Insert: {
           id?: string;
@@ -603,6 +688,7 @@ export interface Database {
           last_opened_at?: string | null;
           created_at?: string;
           updated_at?: string;
+          folder_id?: string | null;
         };
         Update: {
           id?: string;
@@ -623,6 +709,7 @@ export interface Database {
           last_opened_at?: string | null;
           created_at?: string;
           updated_at?: string;
+          folder_id?: string | null;
         };
         Relationships: [];
       };
@@ -736,6 +823,81 @@ export interface Database {
       };
     };
     Views: {
+      admin_credit_activity: {
+        Row: {
+          id: string | null;
+          user_email: string | null;
+          username: string | null;
+          reason: string | null;
+          delta: number | null;
+          balance_after: number | null;
+          project_name: string | null;
+          created_at: string | null;
+        };
+        Relationships: [];
+      };
+      admin_media: {
+        Row: {
+          asset_id: string | null;
+          file_name: string | null;
+          kind: string | null;
+          mime_type: string | null;
+          size_bytes: number | null;
+          size_pretty: string | null;
+          duration_seconds: number | null;
+          analysis_status: string | null;
+          storage_path: string | null;
+          project_name: string | null;
+          owner_email: string | null;
+          project_id: string | null;
+          owner_id: string | null;
+          created_at: string | null;
+        };
+        Relationships: [];
+      };
+      admin_projects: {
+        Row: {
+          project_id: string | null;
+          project_name: string | null;
+          owner_email: string | null;
+          owner_username: string | null;
+          owner_id: string | null;
+          aspect_ratio: string | null;
+          resolution: string | null;
+          duration_seconds: number | null;
+          clip_count: number | null;
+          asset_count: number | null;
+          bytes_used: number | null;
+          ai_edits: number | null;
+          is_demo: boolean | null;
+          created_at: string | null;
+          updated_at: string | null;
+          last_opened_at: string | null;
+        };
+        Relationships: [];
+      };
+      admin_users: {
+        Row: {
+          user_id: string | null;
+          email: string | null;
+          username: string | null;
+          display_name: string | null;
+          is_admin: boolean | null;
+          locale: string | null;
+          credits: number | null;
+          credits_unlimited: boolean | null;
+          refill_amount: number | null;
+          next_refill_at: string | null;
+          lifetime_spent: number | null;
+          project_count: number | null;
+          asset_count: number | null;
+          bytes_used: number | null;
+          ai_requests: number | null;
+          signed_up_at: string | null;
+          last_sign_in_at: string | null;
+        };
+        Relationships: [];
+      };
       audio_elements: {
         Row: {
           id: string | null;
@@ -767,6 +929,17 @@ export interface Database {
           end_time: number | null;
           text_content: string | null;
           text_style: Json | null;
+        };
+        Relationships: [];
+      };
+      project_storage: {
+        Row: {
+          project_id: string | null;
+          owner_id: string | null;
+          project_name: string | null;
+          asset_count: number | null;
+          bytes_used: number | null;
+          size_pretty: string | null;
         };
         Relationships: [];
       };
@@ -805,13 +978,7 @@ export interface Database {
     };
     Functions: {
       create_project: {
-        Args: {
-          p_name?: string;
-          p_aspect_ratio?: string;
-          p_width?: number;
-          p_height?: number;
-          p_fps?: number;
-        };
+        Args: { p_name?: string; p_aspect_ratio?: string; p_width?: number; p_height?: number; p_fps?: number };
         Returns: string;
       };
       duplicate_project: { Args: { p_project_id: string; p_name?: string }; Returns: string };
@@ -823,6 +990,22 @@ export interface Database {
       };
       refund_credits: { Args: { p_reason: string; p_amount: number; p_project_id?: string }; Returns: Json };
       grant_credits: { Args: { p_user_id: string; p_amount: number; p_unlimited?: boolean }; Returns: Json };
+      project_storage_paths: { Args: { p_project_id: string }; Returns: Json };
+      admin_overview: { Args: Record<string, never>; Returns: Json };
+      admin_set_credits: {
+        Args: {
+          p_user_id: string;
+          p_balance?: number | null;
+          p_unlimited?: boolean | null;
+          p_refill_amount?: number | null;
+          p_refill_hours?: number | null;
+        };
+        Returns: Json;
+      };
+      admin_set_admin: { Args: { p_user_id: string; p_is_admin: boolean }; Returns: Json };
+      admin_set_credit_cost: { Args: { p_key: string; p_cost: number }; Returns: Json };
+      admin_delete_project: { Args: { p_project_id: string }; Returns: Json };
+      admin_orphaned_paths: { Args: Record<string, never>; Returns: Json };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
@@ -831,6 +1014,8 @@ export interface Database {
 
 export type Tables<T extends keyof Database['public']['Tables']> =
   Database['public']['Tables'][T]['Row'];
+export type Views<T extends keyof Database['public']['Views']> =
+  Database['public']['Views'][T]['Row'];
 export type TablesInsert<T extends keyof Database['public']['Tables']> =
   Database['public']['Tables'][T]['Insert'];
 export type TablesUpdate<T extends keyof Database['public']['Tables']> =

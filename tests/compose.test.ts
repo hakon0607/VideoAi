@@ -10,8 +10,8 @@ function twoAdjacentClips() {
   const state = applyActions(
     stateWithVideo(60),
     [
-      { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1', start: 0, duration: 10 } },
-      { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1', start: 10, duration: 10 } },
+      { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 0, duration: 10 } },
+      { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 10, duration: 10 } },
     ],
     ctx,
   ).state;
@@ -58,7 +58,7 @@ describe('transitions', () => {
     const ctx = testContext();
     const state = applyActions(
       stateWithVideo(60),
-      [{ type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1', start: 0, duration: 1 } }],
+      [{ type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 0, duration: 1 } }],
       ctx,
     ).state;
     const result = applyActions(
@@ -76,7 +76,7 @@ describe('visibility', () => {
     const state = applyActions(
       stateWithVideo(60),
       [
-        { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1', start: 0, duration: 10 } },
+        { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 0, duration: 10 } },
         { type: 'add_text', params: { trackId: TRACK_IDS[2], text: 'Hi', start: 0, duration: 5 } },
       ],
       ctx,
@@ -97,7 +97,7 @@ describe('visibility', () => {
     const state = applyActions(
       stateWithVideo(60),
       [
-        { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1', start: 0, duration: 10 } },
+        { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 0, duration: 10 } },
         { type: 'add_text', params: { trackId: TRACK_IDS[2], text: 'On top', start: 0, duration: 10 } },
       ],
       ctx,
@@ -129,7 +129,7 @@ describe('keyframes', () => {
     const ctx = testContext();
     const base = applyActions(
       stateWithVideo(60),
-      [{ type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1', start: 0, duration: 10 } }],
+      [{ type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 0, duration: 10 } }],
       ctx,
     ).state;
     const clipId = base.clips[0].id;
@@ -154,7 +154,7 @@ describe('effects', () => {
     const ctx = testContext();
     const base = applyActions(
       stateWithVideo(60),
-      [{ type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1', start: 0, duration: 10 } }],
+      [{ type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 0, duration: 10 } }],
       ctx,
     ).state;
     const clipId = base.clips[0].id;
@@ -172,15 +172,17 @@ describe('effects', () => {
     const resolved = resolveEffects(state.clips[0], 0);
     expect(resolved.filter).toContain('saturate(1.300)');
     expect(resolved.filter).toContain('blur(3.00px)');
-    expect(resolved.vignette?.amount).toBeCloseTo(0.4);
-    expect(resolved.sharpen).toBeCloseTo(0.5);
+    const vignette = resolved.post.find((e) => e.kind === 'vignette');
+    const sharpen = resolved.post.find((e) => e.kind === 'sharpen');
+    expect(vignette && 'amount' in vignette && vignette.amount).toBeCloseTo(0.4);
+    expect(sharpen && 'amount' in sharpen && sharpen.amount).toBeCloseTo(0.5);
   });
 
   it('ignores disabled effects', () => {
     const ctx = testContext();
     const base = applyActions(
       stateWithVideo(60),
-      [{ type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1', start: 0, duration: 10 } }],
+      [{ type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 0, duration: 10 } }],
       ctx,
     ).state;
     const clipId = base.clips[0].id;
@@ -198,7 +200,7 @@ describe('effects', () => {
     const ctx = testContext();
     const base = applyActions(
       stateWithVideo(60),
-      [{ type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1', start: 0, duration: 10 } }],
+      [{ type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 0, duration: 10 } }],
       ctx,
     ).state;
     const clipId = base.clips[0].id;
@@ -219,5 +221,91 @@ describe('text layout', () => {
     } as unknown as CanvasRenderingContext2D;
     expect(wrapText(ctx, 'one two three four', 100)).toEqual(['one two', 'three four']);
     expect(wrapText(ctx, 'a\nb', 100)).toEqual(['a', 'b']);
+  });
+});
+
+describe('clock formatting', () => {
+  it('reads as minutes and seconds, not as an ambiguous timecode', async () => {
+    const { formatClockTime } = await import('@/lib/editor/time');
+    expect(formatClockTime(5)).toBe('0:05');
+    expect(formatClockTime(65)).toBe('1:05');
+    expect(formatClockTime(420)).toBe('7:00');
+    // Once a project passes an hour every label carries the hour, so the
+    // column width stays stable while you scroll.
+    expect(formatClockTime(65, 7200)).toBe('0:01:05');
+    expect(formatClockTime(3725, 7200)).toBe('1:02:05');
+  });
+});
+
+describe('the expanded effect set', () => {
+  function clipWith(effects: { type: string; params?: Record<string, number> }[]) {
+    const ctx = testContext();
+    let state = applyActions(
+      stateWithVideo(60),
+      [{ type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 0, duration: 10 } }],
+      ctx,
+    ).state;
+    const clipId = state.clips[0].id;
+    state = applyActions(
+      state,
+      effects.map((e) => ({ type: 'add_effect', params: { clipId, type: e.type, params: e.params ?? {} } })),
+      ctx,
+    ).state;
+    return state.clips[0];
+  }
+
+  it('maps exposure in stops onto brightness', async () => {
+    const { resolveEffects } = await import('@/lib/render/effects');
+    const clip = clipWith([{ type: 'exposure', params: { stops: 1 } }]);
+    // One stop is twice the light.
+    expect(resolveEffects(clip, 0).filter).toContain('brightness(2.000)');
+  });
+
+  it('turns temperature into a colour wash rather than a filter', async () => {
+    const { resolveEffects } = await import('@/lib/render/effects');
+    const warm = resolveEffects(clipWith([{ type: 'temperature', params: { amount: 0.8 } }]), 0);
+    const cool = resolveEffects(clipWith([{ type: 'temperature', params: { amount: -0.8 } }]), 0);
+    const warmWash = warm.post.find((e) => e.kind === 'colorWash');
+    const coolWash = cool.post.find((e) => e.kind === 'colorWash');
+    expect(warmWash && 'color' in warmWash && warmWash.color).toContain('255,168');
+    expect(coolWash && 'color' in coolWash && coolWash.color).toContain('79,168');
+  });
+
+  it('drives camera shake from the clip clock, and repeats exactly', async () => {
+    const { resolveEffects } = await import('@/lib/render/effects');
+    const clip = clipWith([{ type: 'shake', params: { amount: 0.02, speed: 8 } }]);
+    const a = resolveEffects(clip, 1.234);
+    const b = resolveEffects(clip, 1.234);
+    const c = resolveEffects(clip, 2.5);
+    expect(a.shake).toEqual(b.shake);
+    expect(a.shake.x).not.toBe(c.shake.x);
+    expect(Math.abs(a.shake.x)).toBeLessThanOrEqual(0.02);
+  });
+
+  it('stacks several effects into one filter string plus post passes', async () => {
+    const { resolveEffects } = await import('@/lib/render/effects');
+    const resolved = resolveEffects(
+      clipWith([
+        { type: 'contrast', params: { amount: 1.2 } },
+        { type: 'saturation', params: { amount: 1.3 } },
+        { type: 'film_grain', params: { amount: 0.3, size: 2 } },
+        { type: 'glow', params: { amount: 0.4, radius: 10 } },
+      ]),
+      0,
+    );
+    expect(resolved.filter).toContain('contrast(1.200)');
+    expect(resolved.filter).toContain('saturate(1.300)');
+    expect(resolved.post.map((e) => e.kind).sort()).toEqual(['glow', 'grain']);
+  });
+});
+
+describe('the expanded transition set', () => {
+  it('treats the new blends as overlapping and the flash as internal', () => {
+    expect(isOverlapTransition('whip_pan')).toBe(true);
+    expect(isOverlapTransition('glitch')).toBe(true);
+    expect(isOverlapTransition('blur_dissolve')).toBe(true);
+    expect(isOverlapTransition('spin')).toBe(true);
+    expect(isOverlapTransition('flash')).toBe(false);
+    expect(isOverlapTransition('cut')).toBe(false);
   });
 });

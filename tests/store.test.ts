@@ -6,7 +6,7 @@ import { stateWithVideo, TRACK_IDS } from './helpers';
 function seed() {
   useEditorStore.getState().load(stateWithVideo(60));
   useEditorStore.getState().dispatch(
-    [{ type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1' } }],
+    [{ type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111' } }],
     { label: 'Add clip' },
   );
   return useEditorStore.getState().state.clips[0].id;
@@ -56,7 +56,7 @@ describe('editor store', () => {
     const result = useEditorStore.getState().dispatch(
       [
         { type: 'set_clip_opacity', params: { clipId, opacity: 0.5 } },
-        { type: 'split_clip', params: { clipId: 'does-not-exist', time: 3 } },
+        { type: 'split_clip', params: { clipId: 'deadbeef-0000-4000-8000-000000000000', time: 3 } },
       ],
       { label: 'Bad batch' },
     );
@@ -73,7 +73,7 @@ describe('editor store', () => {
     const result = useEditorStore.getState().dispatch(
       [
         { type: 'set_clip_opacity', params: { clipId, opacity: 0.5 } },
-        { type: 'split_clip', params: { clipId: 'does-not-exist', time: 3 } },
+        { type: 'split_clip', params: { clipId: 'deadbeef-0000-4000-8000-000000000000', time: 3 } },
         { type: 'set_clip_volume', params: { clipId, volume: 1.2 } },
       ],
       { label: 'AI batch', source: 'ai', lenient: true },
@@ -110,8 +110,9 @@ describe('editor store', () => {
     seed();
     const historyBefore = useEditorStore.getState().history.past.length;
     useEditorStore.getState().registerAsset({
-      id: 'asset-2',
-      projectId: 'project-1',
+      id: 'a5502222-2222-4222-8222-222222222222',
+      projectId: 'p9001111-1111-4111-8111-111111111111',
+      folderId: null,
       kind: 'audio',
       name: 'music.mp3',
       storagePath: 'user/u/projects/p/media/asset-2.mp3',

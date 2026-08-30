@@ -10,9 +10,9 @@ import type { MediaAnalysis } from '@/types/editor';
 function withClipAndAnalysis() {
   const ctx = testContext();
   const base = stateWithVideo(60);
-  const { state } = applyAction(base, { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1' } }, ctx);
+  const { state } = applyAction(base, { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111' } }, ctx);
   const analysis: MediaAnalysis = {
-    assetId: 'asset-1',
+    assetId: 'a5501111-1111-4111-8111-111111111111',
     language: 'en',
     text: 'hello there ehm this is a test',
     words: [
@@ -35,7 +35,7 @@ function withClipAndAnalysis() {
     loudnessDb: -18,
     createdAt: new Date(0).toISOString(),
   };
-  return { state: { ...state, analysis: { 'asset-1': analysis } }, ctx };
+  return { state: { ...state, analysis: { 'a5501111-1111-4111-8111-111111111111': analysis } }, ctx };
 }
 
 describe('AI tool surface', () => {
@@ -68,7 +68,11 @@ describe('AI validation', () => {
   it('rejects a made-up clip id with a recoverable error', () => {
     const { state } = withClipAndAnalysis();
     try {
-      applyAction(state, { type: 'split_clip', params: { clipId: 'invented', time: 3 } });
+      // A model that hallucinates usually hallucinates a well-formed uuid.
+      applyAction(state, {
+        type: 'split_clip',
+        params: { clipId: 'deadbeef-0000-4000-8000-000000000000', time: 3 },
+      });
       throw new Error('should have thrown');
     } catch (error) {
       expect(error).toBeInstanceOf(EditorError);
@@ -102,7 +106,7 @@ describe('AI validation', () => {
 describe('timeline mapping', () => {
   it('maps asset time to timeline time', () => {
     const { state } = withClipAndAnalysis();
-    const ranges = assetRangeToTimeline(state, 'asset-1', 5, 7);
+    const ranges = assetRangeToTimeline(state, 'a5501111-1111-4111-8111-111111111111', 5, 7);
     expect(ranges).toHaveLength(1);
     expect(ranges[0].start).toBeCloseTo(5);
     expect(ranges[0].end).toBeCloseTo(7);
@@ -115,7 +119,7 @@ describe('timeline mapping', () => {
     const sped = applyAction(trimmed, { type: 'set_clip_speed', params: { clipId, speed: 2 } }, ctx).state;
     // Source second 8 is 4 seconds of source past the in-point (4), so at 2x
     // speed it lands 2 seconds after the clip's timeline start.
-    const ranges = assetRangeToTimeline(sped, 'asset-1', 8, 10);
+    const ranges = assetRangeToTimeline(sped, 'a5501111-1111-4111-8111-111111111111', 8, 10);
     expect(ranges[0].start).toBeCloseTo(4 + 2, 3);
     expect(ranges[0].end).toBeCloseTo(4 + 3, 3);
   });

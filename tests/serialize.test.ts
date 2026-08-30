@@ -12,7 +12,7 @@ describe('save payload', () => {
     const built = applyActions(
       stateWithVideo(40),
       [
-        { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1', duration: 12 } },
+        { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', duration: 12 } },
         { type: 'add_text', params: { trackId: TRACK_IDS[2], text: 'Hello', start: 1, duration: 3 } },
       ],
       ctx,
@@ -37,7 +37,7 @@ describe('save payload', () => {
     expect(payload.clips).toHaveLength(2);
 
     const media = payload.clips[0] as Record<string, unknown>;
-    expect(media.assetId).toBe('asset-1');
+    expect(media.assetId).toBe('a5501111-1111-4111-8111-111111111111');
     expect(media.sourceIn).toBe(0);
     expect(media.speed).toBe(1);
     expect(media.freeze).toBe(false);
@@ -59,7 +59,7 @@ function baseRow(): Tables<'clips'> {
     timeline_id: 't1',
     track_id: 'track-1',
     project_id: 'p1',
-    asset_id: 'asset-1',
+    asset_id: 'a5501111-1111-4111-8111-111111111111',
     kind: 'video',
     role: 'default',
     group_id: null,
@@ -83,6 +83,7 @@ function baseRow(): Tables<'clips'> {
     text_animation: null,
     transition_in: null,
     transition_out: { id: 'tr1', type: 'fade', duration: 0.5, params: {} },
+    audio_processing: { filter: 'voice', compression: 0.4, gainDb: 2, duckUnderTrackIds: [], duckAmount: 0.7 },
     created_at: new Date(0).toISOString(),
   };
 }
@@ -98,6 +99,8 @@ describe('database rows to editor state', () => {
     expect(clip.transform.flipH).toBe(true);
     expect(clip.crop?.left).toBe(0.05);
     expect(clip.transitionOut?.type).toBe('fade');
+    expect(clip.audio.filter).toBe('voice');
+    expect(clip.audio.compression).toBeCloseTo(0.4);
   });
 
   it('restores a text clip with defaults filled in', () => {

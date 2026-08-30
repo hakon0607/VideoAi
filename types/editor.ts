@@ -36,9 +36,19 @@ export interface ProjectSettings {
 
 export type MediaKind = 'video' | 'audio' | 'image';
 
+export interface MediaFolder {
+  id: UUID;
+  name: string;
+  /** Null means the folder sits at the top of the library. */
+  parentId: UUID | null;
+  createdAt: string;
+}
+
 export interface MediaAsset {
   id: UUID;
   projectId: UUID;
+  /** Null means the asset sits at the top of the library. */
+  folderId: UUID | null;
   kind: MediaKind;
   name: string;
   /** Storage path inside the Supabase bucket. */
@@ -142,16 +152,28 @@ export interface CropRect {
 }
 
 export const EFFECT_TYPES = [
-  'blur',
+  // Colour and exposure
   'brightness',
   'contrast',
   'saturation',
+  'exposure',
+  'temperature',
+  'tint',
+  'hue_rotate',
   'grayscale',
   'sepia',
-  'hue_rotate',
   'invert',
-  'vignette',
+  // Texture and focus
+  'blur',
   'sharpen',
+  'pixelate',
+  'film_grain',
+  'chromatic_aberration',
+  // Framing and light
+  'vignette',
+  'glow',
+  'mirror',
+  'shake',
 ] as const;
 export type EffectType = (typeof EFFECT_TYPES)[number];
 
@@ -197,6 +219,11 @@ export const TRANSITION_TYPES = [
   'slide',
   'zoom',
   'wipe',
+  'whip_pan',
+  'flash',
+  'glitch',
+  'blur_dissolve',
+  'spin',
 ] as const;
 export type TransitionType = (typeof TRANSITION_TYPES)[number];
 
@@ -216,7 +243,20 @@ export interface Transition {
 export const TEXT_ALIGNS = ['left', 'center', 'right'] as const;
 export type TextAlign = (typeof TEXT_ALIGNS)[number];
 
-export const TEXT_ANIMATIONS = ['none', 'fade', 'pop', 'slide_up', 'typewriter'] as const;
+export const TEXT_ANIMATIONS = [
+  'none',
+  'fade',
+  'pop',
+  'slide_up',
+  'slide_left',
+  'typewriter',
+  'bounce',
+  'zoom_in',
+  'wipe',
+  'shake',
+  /** Word-by-word highlight, the way TikTok and CapCut captions read. */
+  'karaoke',
+] as const;
 export type TextAnimation = (typeof TEXT_ANIMATIONS)[number];
 
 export interface TextStyle {
@@ -273,6 +313,22 @@ interface ClipCommon {
   groupId: UUID | null;
 }
 
+export const AUDIO_FILTERS = ['none', 'voice', 'lowpass', 'highpass', 'telephone', 'radio', 'warm'] as const;
+export type AudioFilter = (typeof AUDIO_FILTERS)[number];
+
+/** Per-clip audio processing, applied identically in preview and export. */
+export interface AudioProcessing {
+  filter: AudioFilter;
+  /** Compressor amount, 0 = off. Evens out a recording with wild levels. */
+  compression: number;
+  /** Extra gain in dB applied after the filter chain. */
+  gainDb: number;
+  /** Duck this clip under any clip on the tracks listed here. */
+  duckUnderTrackIds: UUID[];
+  /** How far to duck, 0..1 (0.7 = down to 30% under speech). */
+  duckAmount: number;
+}
+
 export interface MediaClip extends ClipCommon {
   kind: 'video' | 'audio' | 'image';
   assetId: UUID;
@@ -290,6 +346,8 @@ export interface MediaClip extends ClipCommon {
   crop: CropRect | null;
   /** When true the clip holds a single frame (freeze frame). */
   freeze: boolean;
+  /** Filtering, compression and ducking. */
+  audio: AudioProcessing;
 }
 
 export interface TextClip extends ClipCommon {
@@ -313,6 +371,14 @@ export function isTextClip(clip: Clip): clip is TextClip {
 /* Editor state                                                               */
 /* -------------------------------------------------------------------------- */
 
+/** A named point on the timeline. Used for navigation and as an AI anchor. */
+export interface Marker {
+  id: UUID;
+  time: number;
+  label: string;
+  color: string;
+}
+
 export interface EditorState {
   projectId: UUID;
   timelineId: UUID;
@@ -323,6 +389,10 @@ export interface EditorState {
   assets: MediaAsset[];
   /** Analysis keyed by asset id. Read-only for the engine; AI reads it. */
   analysis: Record<UUID, MediaAnalysis>;
+  /** Named points on the timeline. */
+  markers: Marker[];
+  /** Media library folders, so a big shoot stays navigable. */
+  folders: MediaFolder[];
   /** Monotonic counter bumped on every applied transaction. */
   revision: number;
 }

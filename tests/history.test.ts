@@ -22,7 +22,7 @@ describe('history', () => {
   it('undoes and redoes a transaction as one step', () => {
     const base = stateWithVideo(20);
     const ctx = testContext();
-    const after = applyActions(base, [{ type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1' } }], ctx).state;
+    const after = applyActions(base, [{ type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111' } }], ctx).state;
 
     let history = pushEntry(emptyHistory(), entry('add', base, after));
     expect(canUndo(history)).toBe(true);
@@ -52,7 +52,7 @@ describe('history', () => {
     const ctx = testContext();
     const base = applyActions(
       stateWithVideo(120),
-      [{ type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1' } }],
+      [{ type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111' } }],
       ctx,
     ).state;
     const clipId = base.clips[0].id;
@@ -93,8 +93,8 @@ describe('history', () => {
     const base = applyActions(
       stateWithVideo(30),
       [
-        { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1', start: 0, duration: 10 } },
-        { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'asset-1', start: 10, duration: 10 } },
+        { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 0, duration: 10 } },
+        { type: 'create_clip', params: { trackId: TRACK_IDS[0], assetId: 'a5501111-1111-4111-8111-111111111111', start: 10, duration: 10 } },
       ],
       ctx,
     ).state;

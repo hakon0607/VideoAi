@@ -87,8 +87,98 @@ select pg_temp.check((select count(*) from public.keyframes where project_id = :
   'save_timeline writes keyframes');
 select pg_temp.check((select aspect_ratio from public.projects where id = :'project_id') = '9:16',
   'save_timeline updates project settings');
+
 select pg_temp.check((select count(*) from public.captions) = 0, 'captions view is queryable');
 select pg_temp.check((select count(*) from public.audio_elements) = 1, 'audio_elements view resolves');
+
+-- --- bins, markers and audio processing survive the round trip -------------
+-- These are the parts of the editor that only exist in memory until the save
+-- includes them, which is exactly the kind of thing that silently regresses.
+select public.save_timeline(jsonb_build_object(
+  'projectId', :'project_id',
+  'timelineId', (select id from public.timelines where project_id = :'project_id'),
+  'name', 'Alice project',
+  'duration', 12.5,
+  'settings', jsonb_build_object('aspectRatio','9:16','width',1080,'height',1920,'fps',30,
+                                 'backgroundColor','#000000','sampleRate',48000),
+  'folders', jsonb_build_array(
+    jsonb_build_object('id','11110000-0000-4000-8000-000000000001','name','Raw','parentId', null),
+    jsonb_build_object('id','11110000-0000-4000-8000-000000000002','name','B-roll',
+                       'parentId','11110000-0000-4000-8000-000000000001')),
+  'assetFolders', jsonb_build_array(
+    jsonb_build_object('assetId','cccccccc-0000-4000-8000-000000000001',
+                       'folderId','11110000-0000-4000-8000-000000000002')),
+  'markers', jsonb_build_array(
+    jsonb_build_object('id','22220000-0000-4000-8000-000000000001','time',4.25,'label','Latteren','color','#f0a03a')),
+  'tracks', jsonb_build_array(
+    jsonb_build_object('id', (select id from public.tracks where project_id = :'project_id' and kind='video'),
+                       'kind','video','name','Video 1','index',0,'muted',false,'hidden',false,
+                       'locked',false,'volume',1,'height',68)),
+  'clips', jsonb_build_array(
+    jsonb_build_object(
+      'id','eeeeeeee-0000-4000-8000-000000000001',
+      'trackId',(select id from public.tracks where project_id = :'project_id' and kind='video'),
+      'kind','video','assetId','cccccccc-0000-4000-8000-000000000001',
+      'name','a.mp4','start',0,'duration',12.5,'sourceIn',0,'speed',1,
+      'transform', jsonb_build_object('x',0,'y',0,'scale',1,'rotation',0,'flipH',false,'flipV',false),
+      'audio', jsonb_build_object('filter','voice','compression',0.4,'gainDb',3,
+                                  'duckUnderTrackIds', jsonb_build_array(),'duckAmount',0.7),
+      'effects', jsonb_build_array(),
+      'keyframes', jsonb_build_array()
+    ))
+)) is not null as saved2 \gset
+
+select pg_temp.check((select count(*) from public.media_folders where project_id = :'project_id') = 2,
+  'save_timeline writes media folders');
+select pg_temp.check(
+  (select parent_id from public.media_folders where id = '11110000-0000-4000-8000-000000000002')
+    = '11110000-0000-4000-8000-000000000001',
+  'a folder inside another keeps its parent');
+select pg_temp.check(
+  (select folder_id from public.media_assets where id = 'cccccccc-0000-4000-8000-000000000001')
+    = '11110000-0000-4000-8000-000000000002',
+  'dragging a file into a bin survives the save');
+select pg_temp.check((select count(*) from public.markers where project_id = :'project_id') = 1,
+  'save_timeline writes markers');
+select pg_temp.check(
+  (select audio_processing ->> 'filter' from public.clips where id = 'eeeeeeee-0000-4000-8000-000000000001') = 'voice',
+  'audio processing survives the save');
+
+-- Removing a bin unfiles its media instead of deleting it.
+select public.save_timeline(jsonb_build_object(
+  'projectId', :'project_id',
+  'timelineId', (select id from public.timelines where project_id = :'project_id'),
+  'name', 'Alice project',
+  'duration', 12.5,
+  'settings', jsonb_build_object('aspectRatio','9:16','width',1080,'height',1920,'fps',30,
+                                 'backgroundColor','#000000','sampleRate',48000),
+  'folders', jsonb_build_array(),
+  'assetFolders', jsonb_build_array(
+    jsonb_build_object('assetId','cccccccc-0000-4000-8000-000000000001','folderId', null)),
+  'markers', jsonb_build_array(),
+  'tracks', jsonb_build_array(
+    jsonb_build_object('id', (select id from public.tracks where project_id = :'project_id' and kind='video'),
+                       'kind','video','name','Video 1','index',0,'muted',false,'hidden',false,
+                       'locked',false,'volume',1,'height',68)),
+  'clips', jsonb_build_array(
+    jsonb_build_object(
+      'id','eeeeeeee-0000-4000-8000-000000000001',
+      'trackId',(select id from public.tracks where project_id = :'project_id' and kind='video'),
+      'kind','video','assetId','cccccccc-0000-4000-8000-000000000001',
+      'name','a.mp4','start',0,'duration',12.5,'sourceIn',0,'speed',1,
+      'transform', jsonb_build_object('x',0,'y',0,'scale',1,'rotation',0,'flipH',false,'flipV',false),
+      'effects', jsonb_build_array(),
+      'keyframes', jsonb_build_array()))
+)) is not null as saved3 \gset
+
+select pg_temp.check((select count(*) from public.media_folders where project_id = :'project_id') = 0,
+  'removing a bin deletes the folder row');
+select pg_temp.check((select count(*) from public.media_assets where project_id = :'project_id') = 1,
+  'removing a bin keeps the media that was in it');
+select pg_temp.check((select count(*) from public.markers where project_id = :'project_id') = 0,
+  'removing a marker deletes its row');
+
+
 
 -- --- bob is locked out -----------------------------------------------------
 set request.jwt.claim.sub = 'bbbbbbbb-0000-4000-8000-000000000002';

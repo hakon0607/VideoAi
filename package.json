@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "build:sql": "node scripts/build-setup-sql.mjs",
     "test": "vitest run --config vitest.config.mts",
     "test:watch": "vitest --config vitest.config.mts",
     "verify": "npm run typecheck && npm run lint && npm run test && npm run build"
@@ -25,6 +26,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tailwind-merge": "^3.3.1",
+    "tus-js-client": "^4.3.1",
     "zod": "^4.5.4",
     "zustand": "^5.0.15"
   },

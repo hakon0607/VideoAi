@@ -43,6 +43,14 @@ seen the codebase: what it does, when to reach for it, and what the units are.
 do arithmetic on source offsets, speed or reversal, do that arithmetic in the
 tool and hand back timeline seconds.
 
+## Admin surface
+
+Anything that reads or writes across users goes through `supabase/migrations/`:
+an admin view ending in `where public.is_admin()`, or a `SECURITY DEFINER`
+function that checks `is_admin()` first. Do not reach for the service-role key
+to answer a request from the browser — it is for storage objects in other
+users' folders and nothing else.
+
 ## Before you push
 
 ```bash

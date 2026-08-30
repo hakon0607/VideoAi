@@ -8,13 +8,22 @@ Built with Next.js (App Router), TypeScript, Tailwind, Supabase (Auth, Postgres,
 
 ## What it actually does
 
-- **Multitrack timeline** — video, audio, text and overlay tracks; drag, trim, split, snap, ripple, zoom, keyboard shortcuts.
+- **A public front page** at `/` describing the product, in both languages, with the editor behind sign-in.
+- **Multitrack timeline** — video, audio, text and overlay tracks; drag, trim, split, ripple delete, close gaps, detach audio, freeze, reverse, snap (toggleable), markers, per-kind track naming, reorder and rename in place, zoom from frame level out to a two-hour project, and a minimap.
+- **A CapCut-shaped library** — a vertical icon rail with Media, Text, Sounds, Stickers, Audio, Effects and Transitions, and an inspector that shares the right column with the assistant.
+- **Media folders** — bins you create, rename and drag files into, plus search across the whole library and a grid or list view.
+- **A built-in sound library** — 16 effects synthesised in the browser (whooshes, impacts, pops, comedy, musical). Nothing is downloaded or licensed, and the same id always renders the same waveform, so a project sounds identical everywhere.
+- **Emoji stickers** with pop, bounce, shake and zoom animations.
+- **Real audio processing** — voice presets built from biquad filters, compression, make-up gain and automatic ducking under speech. The preview and the exporter run the same graph.
 - **Preview that matches the export** — the preview and the exporter run the *same* compositing function, so what you see is what the file contains.
 - **Real media analysis** — on upload, VideoAI reads duration, resolution and frame rate straight out of the container, grabs a poster frame, computes a waveform and detects every pause. All locally, at no cost.
 - **Real transcription** — word-level timestamps from OpenAI, chunked so a two-hour recording is never truncated. This is what makes "remove all the pauses", "cut where I say ehm" and genuine captions possible.
-- **AI that edits** — the assistant has ~50 editor commands and 8 read tools. It inspects the real timeline, plans, executes, and everything it does in one request is **one** undo step.
+- **AI that edits** — the assistant has ~70 editor commands and 12 read tools, including highlight-finding for "take the best bits of this".
+- **An engine that refuses to corrupt itself** — every action is checked *after* it runs against the things the renderer, the timeline and the database all assume: no duplicate ids, no clip on a missing or wrong-kind track, no NaN, nothing shorter than a frame. A bad parameter becomes a clear error the assistant can recover from, never a broken project.
+- **Nothing is ever hidden behind something else** — adding, moving, duplicating, captioning, detaching audio and dropping a sound all land on a free lane, adding one if they have to. Locked clips and locked tracks stay put, and a ripple edit settles around them instead of sliding clips underneath. It inspects the real timeline, plans, executes, and everything it does in one request is **one** undo step.
 - **Real export** — H.264/MP4 or VP9/WebM rendered in the browser from the timeline, with a mixed audio track. Not a stub, not a screen recording.
-- **Credits** — every user gets a balance that refills on a schedule; you control the price list and per-user balances from the Supabase dashboard.
+- **Credits** — every user gets a balance that refills on a schedule; you control the price list and per-user balances from the admin panel or the Supabase dashboard.
+- **An admin panel** — every user, project and file in one place, with storage totals, credit history, and the controls to change any of it.
 - **Norwegian and English** interface.
 
 ## What is *not* built (deliberately, and honestly)
@@ -40,7 +49,7 @@ Open http://localhost:3000.
 
 Create a project at [supabase.com](https://supabase.com), then:
 
-1. **Run the schema.** In the SQL editor, paste and run `supabase/setup_all_in_one.sql`. That is every migration in `supabase/migrations/` concatenated in order, and it is safe to re-run.
+1. **Run the schema.** In the SQL editor, paste and run `supabase/setup_all_in_one.sql`. That is every migration in `supabase/migrations/` concatenated in order, and it is safe to re-run. (If you add a migration, `npm run build:sql` rebuilds that file.)
 2. **Check the buckets.** The migration creates `media` (private), `exports` (private) and `avatars` (public). Confirm them under Storage.
 3. **Set the auth URLs.** Authentication → URL Configuration:
    - Site URL: your deployed URL (e.g. `https://videoai.vercel.app`), or `http://localhost:3000` locally.
@@ -68,7 +77,19 @@ Create an API key at [platform.openai.com](https://platform.openai.com). The key
 
 `.env.example` lists them all. `.env.local` is gitignored — do not commit secrets.
 
-### 4. Make yourself an admin
+### 4. Raise the upload limit
+
+Supabase enforces a maximum upload size per project, and on the free plan it
+defaults to **50 MB** — which is almost always the reason a video upload fails.
+Raise it in the dashboard under **Storage → Settings → Upload file size limit**.
+The buckets inherit the project limit, so nothing else needs changing.
+
+VideoAI reads that limit and refuses a too-large file up front with the exact
+numbers, rather than uploading for ten minutes and failing. Files over 6 MB go
+up with the resumable protocol, so a dropped connection costs one 6 MB chunk
+instead of the whole upload.
+
+### 5. Make yourself an admin
 
 After signing up once:
 
@@ -77,6 +98,44 @@ update public.profiles set is_admin = true where username = 'your-username';
 update public.user_credits set unlimited = true
 where user_id = (select user_id from public.profiles where username = 'your-username');
 ```
+
+Reload the app and you will see an **Admin** entry in the sidebar, a shield on
+your avatar, and your credit badge showing **Unlimited** in the accent colour.
+Everything below can then be done from `/admin` instead of SQL.
+
+## The admin panel
+
+`/admin` is visible only to users with `is_admin`, and every action is checked
+again inside the database, so the panel is a convenience rather than the
+security boundary.
+
+| Tab | What it shows |
+| --- | --- |
+| Overview | Users, projects, storage, AI usage, exports, credits spent, who is active |
+| Users | Every account with its email, credits, project count, storage and AI usage. Click a row to set a balance, grant unlimited credits, change the refill, or promote to admin |
+| Projects | Every project with its owner's email, length, clip count, size and AI edits. Delete a project and its files from here |
+| Media | Every uploaded file with its owner, project, size and analysis status |
+| Credits | The price list, editable in place, and the full credit ledger |
+| Storage | Scans the buckets for files no database row points at, and removes them |
+
+Deleting another user's files needs `SUPABASE_SERVICE_ROLE_KEY` to be set in the
+environment. Without it the rows are still removed and the panel says plainly
+that the files were left behind.
+
+### Finding what belongs to whom in Supabase
+
+Migration `0006` adds descriptions to every table and four admin views you can
+query straight from the SQL editor:
+
+```sql
+select * from admin_users;             -- everyone, with credits and storage
+select * from admin_projects;          -- every project, with its owner's email
+select * from admin_media;             -- every file, with owner and project
+select * from admin_credit_activity;   -- the ledger, with names attached
+select * from project_storage;         -- bytes per project (any user, own rows)
+```
+
+They return rows only for an admin, so they are safe to leave in place.
 
 ---
 
@@ -125,6 +184,19 @@ A failed AI request is refunded automatically, and a request that turns out to b
 
 ---
 
+## Deleting things
+
+Deleting a project removes its rows **and** the files behind it: the app asks
+the database which storage objects only that project references, deletes the
+project, then clears those objects and walks the project's folder in both
+buckets for anything left over. Files shared with a duplicated project are kept.
+
+Deleting a single media file works the same way — the object is only removed
+once no surviving row points at it.
+
+If something ever does get orphaned (an upload interrupted halfway, say), the
+admin panel's Storage tab finds it and cleans it up.
+
 ## Deploying to Vercel
 
 1. Push the repository to GitHub.
@@ -151,7 +223,7 @@ Things that matter on Vercel and are already handled:
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Unit tests (Vitest) |
 | `npm run verify` | typecheck + lint + test + build |
-| `bash scripts/db-test.sh` | Applies the whole schema to a throwaway Postgres and runs the RLS suite |
+| `bash scripts/db-test.sh` | Applies the whole schema to a throwaway Postgres and runs the RLS and admin suites |
 | `node scripts/build-harness.mjs` | Builds the compositor / export harnesses in `scripts/harness/` |
 
 ---
@@ -168,10 +240,13 @@ Things that matter on Vercel and are already handled:
 - transcript search and silence detection mapped onto the timeline
 - serialisation to and from the database shape
 - compositing: transition windows, draw order, keyframe interpolation, effect resolution
+- **whole requests**: `tests/scenario.test.ts` replays "lag denne bra for TikTok" against a synthetic twelve-minute bake-along — highlight scoring, the ripple cut, captions, sound effects, a sticker, a zoom punch, voice enhancement — and checks the result is vertical, under a third of the length, free of overlaps and exactly one undo step. It also cuts 200 silences out of an hour-long timeline and builds 1000 clips across ten tracks, so a regression in either shows up as a failing test rather than a slow editor.
+
+**Fuzzing** (`tests/fuzz.test.ts`) pours ~22 000 semi-random but schema-valid actions through the registry from a fixed set of seeds and checks the timeline never reaches a state the rest of the app cannot render. Every bug it found is now also a named test in `tests/regressions.test.ts`.
 
 **Database and RLS tests** (`bash scripts/db-test.sh`) apply every migration to a real Postgres and then assert the isolation guarantees: that user B cannot read, change or delete user A's projects, media, clips, history or AI conversations; that nobody can top up their own wallet; that credits actually run out; and that the refill and admin grant work.
 
-**Manual verification harnesses** (`scripts/harness/`) render the real compositor and run a real export against local test files, so the rendering path can be inspected in a browser without a Supabase project.
+**Manual verification harnesses** (`scripts/harness/`) render the real compositor and run a real export against local test files, so the rendering path can be inspected in a browser without a Supabase project. `window.stressCompose()` on the compositor harness draws every effect at both ends of its range, every transition and every text animation — about 8 000 frames — and reports anything that threw.
 
 ---
 
@@ -184,16 +259,18 @@ app/
   editor/[projectId] the editor
   api/ai/chat        AI tool-calling loop (streams NDJSON)
   api/media/transcribe
+  (app)/admin        the admin panel
   auth/              OAuth-style callback and sign-out
 components/
   editor/            topbar, panels, timeline, preview, AI, export
+  landing/           the public front page
   dashboard/         project grid, cards, credits, profile
   ui/                buttons, inputs, modal, tooltip
 lib/
   editor/            the command engine: types, actions, reducer, history, store
   render/            compositor, media pool, audio mixer, exporter
   ai/                tools, project context, system prompt, runner
-  media/             probing, audio analysis, upload, transcription
+  media/             probing, audio analysis, upload, transcription, sound effects
   supabase/          browser, server, admin clients and middleware
   i18n/              dictionaries and provider
 types/               editor and database types
